@@ -75,17 +75,20 @@ struct gjValue
   uint32_t    getElementCount() const;
   gjValue     getElement     ( uint32_t elem_idx ) const;
 
-  void        insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
+  gjValue     insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
   void        removeElement  ( uint32_t remove_idx );
   void        clearArray     ();
   
   // This is for objects, not arrays
   uint32_t    getMemberCount() const;
-  gjValue     getMember     ( const char* key ) const;
-  bool        hasMember     ( const char* key ) const;
+  gjValue     getMember     ( const char* key       ) const;
+  gjValue     getMember     ( uint32_t    key_crc32 ) const;
+  bool        hasMember     ( const char* key       ) const;
+  bool        hasMember     ( uint32_t    key_crc32 ) const;
 
-  void        addMember     ( const char* key, gjValue value );
-  void        removeMember  ( const char* key );
+  gjValue     addMember     ( const char* key, gjValue value );
+  void        removeMember  ( const char* key       );
+  void        removeMember  ( uint32_t    key_crc32 );
   void        clearObject   ();
 
   gjValue     makeDeepCopy  ();
@@ -96,6 +99,50 @@ gjValue     gj_parse        ( const char* json_string );
 gjValue     gj_makeArray    ();
 gjValue     gj_makeObject   ();
 void        gj_deleteValue  ( gjValue val );
+
+//---------------------------------------------------------------------------------
+enum class gjSerializeMode : uint32_t
+{
+  kPretty,
+  kMinified,
+
+  kCount
+};
+
+//---------------------------------------------------------------------------------
+enum class gjNewlineStyle : uint32_t
+{
+  kWindows,
+  kLinux,
+
+  kCount
+};
+
+//---------------------------------------------------------------------------------
+static constexpr int kGjIndentAmtTabs = -1;
+struct gjSerializeOptions
+{
+  gjSerializeMode mode;
+  gjNewlineStyle  newline_style;
+  int             indent_amt;
+};
+
+gjSerializeOptions gj_getDefaultSerializeOptions();
+
+//---------------------------------------------------------------------------------
+class gjSerializer
+{
+public:
+  gjSerializer ( gjValue obj_to_serialize, gjSerializeOptions* options = nullptr );
+  ~gjSerializer();
+
+  void        serialize();
+  const char* getString();
+private:
+  gjValue            m_Obj;
+  gjSerializeOptions m_Options;
+  char*              m_StringData;
+};
 
 //---------------------------------------------------------------------------------
 // 

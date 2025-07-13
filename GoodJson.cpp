@@ -35,6 +35,57 @@ size_t gj_StrLen( const char* str )
   return idx == kUnreasonablyLargeStringSize ? (size_t)-1 : idx;
 }
 
+// Crc32 functionality from https://github.com/stbrumme/crc32 under zlib license
+// has been modified to suit coding standard of goodjson
+constexpr uint32_t kCrc32Lookup[256] = {
+  0x00000000,0x77073096,0xEE0E612C,0x990951BA,0x076DC419,0x706AF48F,0xE963A535,0x9E6495A3,
+  0x0EDB8832,0x79DCB8A4,0xE0D5E91E,0x97D2D988,0x09B64C2B,0x7EB17CBD,0xE7B82D07,0x90BF1D91,
+  0x1DB71064,0x6AB020F2,0xF3B97148,0x84BE41DE,0x1ADAD47D,0x6DDDE4EB,0xF4D4B551,0x83D385C7,
+  0x136C9856,0x646BA8C0,0xFD62F97A,0x8A65C9EC,0x14015C4F,0x63066CD9,0xFA0F3D63,0x8D080DF5,
+  0x3B6E20C8,0x4C69105E,0xD56041E4,0xA2677172,0x3C03E4D1,0x4B04D447,0xD20D85FD,0xA50AB56B,
+  0x35B5A8FA,0x42B2986C,0xDBBBC9D6,0xACBCF940,0x32D86CE3,0x45DF5C75,0xDCD60DCF,0xABD13D59,
+  0x26D930AC,0x51DE003A,0xC8D75180,0xBFD06116,0x21B4F4B5,0x56B3C423,0xCFBA9599,0xB8BDA50F,
+  0x2802B89E,0x5F058808,0xC60CD9B2,0xB10BE924,0x2F6F7C87,0x58684C11,0xC1611DAB,0xB6662D3D,
+  0x76DC4190,0x01DB7106,0x98D220BC,0xEFD5102A,0x71B18589,0x06B6B51F,0x9FBFE4A5,0xE8B8D433,
+  0x7807C9A2,0x0F00F934,0x9609A88E,0xE10E9818,0x7F6A0DBB,0x086D3D2D,0x91646C97,0xE6635C01,
+  0x6B6B51F4,0x1C6C6162,0x856530D8,0xF262004E,0x6C0695ED,0x1B01A57B,0x8208F4C1,0xF50FC457,
+  0x65B0D9C6,0x12B7E950,0x8BBEB8EA,0xFCB9887C,0x62DD1DDF,0x15DA2D49,0x8CD37CF3,0xFBD44C65,
+  0x4DB26158,0x3AB551CE,0xA3BC0074,0xD4BB30E2,0x4ADFA541,0x3DD895D7,0xA4D1C46D,0xD3D6F4FB,
+  0x4369E96A,0x346ED9FC,0xAD678846,0xDA60B8D0,0x44042D73,0x33031DE5,0xAA0A4C5F,0xDD0D7CC9,
+  0x5005713C,0x270241AA,0xBE0B1010,0xC90C2086,0x5768B525,0x206F85B3,0xB966D409,0xCE61E49F,
+  0x5EDEF90E,0x29D9C998,0xB0D09822,0xC7D7A8B4,0x59B33D17,0x2EB40D81,0xB7BD5C3B,0xC0BA6CAD,
+  0xEDB88320,0x9ABFB3B6,0x03B6E20C,0x74B1D29A,0xEAD54739,0x9DD277AF,0x04DB2615,0x73DC1683,
+  0xE3630B12,0x94643B84,0x0D6D6A3E,0x7A6A5AA8,0xE40ECF0B,0x9309FF9D,0x0A00AE27,0x7D079EB1,
+  0xF00F9344,0x8708A3D2,0x1E01F268,0x6906C2FE,0xF762575D,0x806567CB,0x196C3671,0x6E6B06E7,
+  0xFED41B76,0x89D32BE0,0x10DA7A5A,0x67DD4ACC,0xF9B9DF6F,0x8EBEEFF9,0x17B7BE43,0x60B08ED5,
+  0xD6D6A3E8,0xA1D1937E,0x38D8C2C4,0x4FDFF252,0xD1BB67F1,0xA6BC5767,0x3FB506DD,0x48B2364B,
+  0xD80D2BDA,0xAF0A1B4C,0x36034AF6,0x41047A60,0xDF60EFC3,0xA867DF55,0x316E8EEF,0x4669BE79,
+  0xCB61B38C,0xBC66831A,0x256FD2A0,0x5268E236,0xCC0C7795,0xBB0B4703,0x220216B9,0x5505262F,
+  0xC5BA3BBE,0xB2BD0B28,0x2BB45A92,0x5CB36A04,0xC2D7FFA7,0xB5D0CF31,0x2CD99E8B,0x5BDEAE1D,
+  0x9B64C2B0,0xEC63F226,0x756AA39C,0x026D930A,0x9C0906A9,0xEB0E363F,0x72076785,0x05005713,
+  0x95BF4A82,0xE2B87A14,0x7BB12BAE,0x0CB61B38,0x92D28E9B,0xE5D5BE0D,0x7CDCEFB7,0x0BDBDF21,
+  0x86D3D2D4,0xF1D4E242,0x68DDB3F8,0x1FDA836E,0x81BE16CD,0xF6B9265B,0x6FB077E1,0x18B74777,
+  0x88085AE6,0xFF0F6A70,0x66063BCA,0x11010B5C,0x8F659EFF,0xF862AE69,0x616BFFD3,0x166CCF45,
+  0xA00AE278,0xD70DD2EE,0x4E048354,0x3903B3C2,0xA7672661,0xD06016F7,0x4969474D,0x3E6E77DB,
+  0xAED16A4A,0xD9D65ADC,0x40DF0B66,0x37D83BF0,0xA9BCAE53,0xDEBB9EC5,0x47B2CF7F,0x30B5FFE9,
+  0xBDBDF21C,0xCABAC28A,0x53B39330,0x24B4A3A6,0xBAD03605,0xCDD70693,0x54DE5729,0x23D967BF,
+  0xB3667A2E,0xC4614AB8,0x5D681B02,0x2A6F2B94,0xB40BBE37,0xC30C8EA1,0x5A05DF1B,0x2D02EF8D,
+};
+
+//---------------------------------------------------------------------------------
+uint32_t gj_crc32( const char* str ) //const void* data, size_t length )
+{
+  uint32_t length = (uint32_t)gj_StrLen( str );
+
+  uint32_t crc = 0;
+  const uint8_t* current = (const uint8_t*)str;
+
+  while (length-- != 0)
+    crc = (crc >> 8) ^ kCrc32Lookup[(crc & 0xFF) ^ *current++];
+
+  return ~crc; // same as crc ^ 0xFFFFFFFF
+}
+
 //---------------------------------------------------------------------------------
 static gjMallocFn s_MallocFn = nullptr;
 static gjFreeFn   s_FreeFn   = nullptr;
@@ -97,10 +148,11 @@ struct _gjMemberHandle
 static constexpr uint32_t kMemberIdxTail = (uint32_t)-1;
 struct _gjMember
 {
-  const char* m_KeyStr;
-  gjValue     m_Value;
-  uint32_t    m_Gen;
-  uint32_t    m_Next;
+  char*    m_KeyStr;
+  uint32_t m_KeyHash;
+  gjValue  m_Value;
+  uint32_t m_Gen;
+  uint32_t m_Next;
 };
 
 //---------------------------------------------------------------------------------
@@ -330,7 +382,17 @@ _gjArrayElem* gj_freeArrayElem( _gjArrayHandle* inout_head_handle, uint32_t arra
         }
       }
     }
+    else
+    {
+      gj_assert( "Attempting to free a member that has already been freed" );
+    }
   }
+  else
+  {
+    gj_assert( "Attempting to free a member that has an invalid handle" );
+  }
+
+  return nullptr;
 }
 
 //---------------------------------------------------------------------------------
@@ -349,6 +411,120 @@ void gj_freeArrayElemList( _gjArrayHandle head_handle )
       }
       elem->m_Next    = s_ArrayPoolHead;
       s_ArrayPoolHead = head_handle.m_Idx; 
+    }
+  }
+}
+
+//---------------------------------------------------------------------------------
+_gjMember* gj_allocMember( uint32_t* out_idx, uint32_t head=kArrayIdxTail )
+{
+  *out_idx = kMemberIdxTail;
+  if ( s_MemberPoolHead != kMemberIdxTail )
+  {
+    if ( head == kMemberIdxTail )
+    {
+      *out_idx = s_MemberPoolHead;
+      s_MemberPoolHead = s_MemberPool[ s_MemberPoolHead ].m_Next;
+      s_MemberPool[ *out_idx ].m_Next = head;
+      return &s_MemberPool[ *out_idx ];
+    }
+    else
+    {
+      _gjMember* member = &s_MemberPool[ head ];
+      while ( member->m_Next != kMemberIdxTail )
+      {
+        member = &s_MemberPool[ member->m_Next ];
+      }
+      *out_idx = s_MemberPoolHead;
+      s_MemberPoolHead = s_MemberPool[ s_MemberPoolHead ].m_Next;
+      
+      const uint32_t prev_next = member->m_Next;
+      member->m_Next = *out_idx;
+      s_MemberPool[ *out_idx ].m_Next = prev_next;
+
+      return &s_MemberPool[ *out_idx ];
+    }
+  }
+
+  return nullptr;
+}
+
+//---------------------------------------------------------------------------------
+_gjMember* gj_freeMember( _gjMemberHandle* inout_head_handle, uint32_t key_crc32 )
+{
+  if ( inout_head_handle->m_Idx < s_Config.max_value_count )
+  {
+    _gjMember* member = &s_MemberPool[ inout_head_handle->m_Idx ];
+    if ( member->m_Gen == inout_head_handle->m_Gen )
+    {
+      if ( member->m_KeyHash == key_crc32 )
+      {
+        const uint32_t prev_head = s_MemberPoolHead;
+        s_MemberPoolHead = inout_head_handle->m_Idx;
+
+        inout_head_handle->m_Idx = member->m_Next;
+        inout_head_handle->m_Gen = inout_head_handle->m_Idx != kMemberIdxTail
+                                 ? s_MemberPool[ inout_head_handle->m_Idx ].m_Gen
+                                 : (uint32_t)-1;
+        member->m_Gen++;
+        member->m_Next = prev_head;
+        gj_free( member->m_KeyStr );
+
+        return member;
+      }
+      else
+      {
+        while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
+        {
+          member = &s_MemberPool[ member->m_Next ];
+        }
+
+        if ( member->m_KeyHash == key_crc32 )
+        {
+          const uint32_t free_idx = member->m_Next;
+          member->m_Next = s_MemberPool[ member->m_Next ].m_Next;
+          s_MemberPool[ free_idx ].m_Next = s_MemberPoolHead;
+          s_MemberPool[ free_idx ].m_Gen++;
+          s_MemberPoolHead = free_idx;
+          gj_free( member->m_KeyStr );
+
+          return &s_MemberPool[ free_idx ];
+        }
+        else
+        {
+          gj_assert( "Attempted to free object member that does not exist in provided head list. This is a problem with the library and should be reported to the github with a minimal repro." );
+        }
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to free a member that has already been freed" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to free a member that has an invalid handle" );
+  }
+
+  return nullptr;
+}
+
+//---------------------------------------------------------------------------------
+void gj_freeMemberList( _gjMemberHandle head_handle )
+{
+  if ( head_handle.m_Idx < s_Config.max_value_count )
+  {
+    _gjMember* member = &s_MemberPool[ head_handle.m_Idx ];
+    if ( member->m_Gen == head_handle.m_Gen )
+    {
+      member->m_Gen++;
+      while ( member->m_Next != kMemberIdxTail )
+      {
+        member = &s_MemberPool[ member->m_Next ];
+        member->m_Gen++;
+      }
+      member->m_Next   = s_MemberPoolHead;
+      s_MemberPoolHead = head_handle.m_Idx; 
     }
   }
 }
@@ -401,7 +577,32 @@ void gj_freeValueData( _gjValue* val )
       gj_freeArrayElemList( arr_start_handle );
     }
   }
-  // todo: free object
+  else if ( val->m_Type == gjValueType::kObject )
+  {
+    _gjMemberHandle obj_start_handle = val->m_ObjectStart;
+    _gjMember*      member = &s_MemberPool[ obj_start_handle.m_Idx ];
+
+    if ( member->m_Gen == obj_start_handle.m_Gen )
+    {
+      if ( gj_isValueAlloced( member->m_Value.idx, member->m_Value.gen ) )
+      {
+        gj_freeValueData( &s_ValuePool[ member->m_Value.idx ] );
+        gj_freeValue    ( member->m_Value.idx );
+      }
+
+      while ( member->m_Next != kMemberIdxTail )
+      {
+        member = &s_MemberPool[ member->m_Next ];
+        if ( gj_isValueAlloced( member->m_Value.idx, member->m_Value.gen ) )
+        {
+          gj_freeValueData( &s_ValuePool[ member->m_Value.idx ] );
+          gj_freeValue    ( member->m_Value.idx );
+        }
+      }
+    }
+
+    gj_freeMemberList( obj_start_handle );
+  }
 }
 
 //---------------------------------------------------------------------------------
@@ -860,7 +1061,7 @@ gjValue gjValue::getElement( uint32_t elem_idx ) const
       const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
       {
-        uint32_t cur_idx = 0;
+        uint32_t cur_idx = arr_handle_start.m_Idx;
         const _gjArrayElem* elem = &s_ArrayPool[ cur_idx ];
         while ( cur_idx != elem_idx )
         {
@@ -896,16 +1097,16 @@ gjValue gjValue::operator[]( uint32_t elem_idx ) const
 }
 
 //---------------------------------------------------------------------------------
-void gjValue::insertElement( gjValue val, uint32_t insert_idx /* = kArrayIndexEnd */ )
+gjValue gjValue::insertElement( gjValue val, uint32_t insert_idx /* = kArrayIndexEnd */ )
 {
   if ( gj_isValueAlloced( idx, gen ) )
   {
     if ( s_ValuePool[ idx ].m_Type == gjValueType::kArray )
     {
       uint32_t arr_idx;
-      gj_allocArrayElem( &arr_idx, insert_idx, s_ValuePool[ idx ].m_ArrayStart.m_Idx );
+      _gjArrayElem* elem = gj_allocArrayElem( &arr_idx, insert_idx, s_ValuePool[ idx ].m_ArrayStart.m_Idx );
 
-      if ( arr_idx != kArrayIdxTail )
+      if ( elem )
       {
         // The head has been replaced, update the head value
         if ( s_ValuePool[ idx ].m_ArrayStart.m_Idx == kArrayIdxTail )
@@ -913,7 +1114,12 @@ void gjValue::insertElement( gjValue val, uint32_t insert_idx /* = kArrayIndexEn
           s_ValuePool[ idx ].m_ArrayStart.m_Idx = arr_idx;
         }
 
-        s_ArrayPool[ idx ].m_Value = val;
+        elem->m_Value = val;
+
+        gjValue ret_val;
+        ret_val.idx = arr_idx;
+        ret_val.gen = elem->m_Gen;
+        return ret_val;
       }
       else
       {
@@ -929,6 +1135,8 @@ void gjValue::insertElement( gjValue val, uint32_t insert_idx /* = kArrayIndexEn
   {
     gj_assert( "Attempting to insert element into a value that has been freed" );
   }
+
+  return gjValue();
 }
 
 //---------------------------------------------------------------------------------
@@ -939,7 +1147,7 @@ void gjValue::removeElement( uint32_t remove_idx )
     if ( s_ValuePool[ idx ].m_Type == gjValueType::kArray )
     {
       const _gjArrayElem* freed_elem  = gj_freeArrayElem( &s_ValuePool[ idx ].m_ArrayStart, remove_idx );
-      if ( gj_isValueAlloced( freed_elem->m_Value.idx, freed_elem->m_Value.gen ) )
+      if ( freed_elem )
       {
         _gjValue* freed_value = &s_ValuePool[ freed_elem->m_Value.idx ];
         gj_freeValueData( freed_value );
@@ -1026,21 +1234,202 @@ uint32_t gjValue::getMemberCount() const
 }
 
 //---------------------------------------------------------------------------------
+gjValue gjValue::operator[]( const char* key ) const
+{
+  return getMember( key );
+}
+
+//---------------------------------------------------------------------------------
 gjValue gjValue::getMember( const char* key ) const
 {
-  
+  return getMember( gj_crc32( key ) );
+}
+
+//---------------------------------------------------------------------------------
+gjValue gjValue::getMember( uint32_t key_crc32 ) const
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    const _gjValue* val = &s_ValuePool[ idx ];
+    if ( val->m_Type == gjValueType::kObject )
+    {
+      const _gjMemberHandle member_handle_start = val->m_ObjectStart;
+      if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
+      {
+        uint32_t cur_idx = member_handle_start.m_Idx;
+        const _gjMember* member = &s_MemberPool[ cur_idx ];
+        while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
+        {
+          cur_idx = member->m_Next;
+          member = &s_MemberPool[ cur_idx ];
+        }
+
+        if ( member->m_KeyHash == key_crc32 )
+        {
+          return member->m_Value;
+        }
+        else
+        {
+          gj_assert( "Attempting to get member that does not exist in object" );
+        }
+      }
+      else
+      {
+        gj_assert( "Attempting to get member for an object that has been freed" );
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to get member from a value that isn't an object" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to get member from a value that has been freed" );
+  }
+
+  return gjValue();
 }
 
 //---------------------------------------------------------------------------------
 bool gjValue::hasMember( const char* key ) const
 {
-  
+  return hasMember( gj_crc32( key ) );
 }
 
 //---------------------------------------------------------------------------------
-void gjValue::addMember( const char* key )
+bool gjValue::hasMember( uint32_t key_crc32 ) const
 {
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    const _gjValue* val = &s_ValuePool[ idx ];
+    if ( val->m_Type == gjValueType::kObject )
+    {
+      const _gjMemberHandle member_handle_start = val->m_ObjectStart;
+      if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
+      {
+        uint32_t cur_idx = member_handle_start.m_Idx;
+        const _gjMember* member = &s_MemberPool[ cur_idx ];
+        while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
+        {
+          cur_idx = member->m_Next;
+          member = &s_MemberPool[ cur_idx ];
+        }
 
+        return member->m_KeyHash == key_crc32;
+      }
+      else
+      {
+        gj_assert( "Attempting to get member for an object that has been freed" );
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to get member from a value that isn't an object" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to get member from a value that has been freed" );
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+gjValue gjValue::addMember( const char* key, gjValue value )
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    if ( s_ValuePool[ idx ].m_Type == gjValueType::kObject )
+    {
+      uint32_t member_idx;
+      _gjMember* member = gj_allocMember( &member_idx, s_ValuePool[ idx ].m_ObjectStart.m_Idx );
+
+      if ( member != nullptr )
+      {
+        const size_t key_str_size = gj_StrLen( key );
+        member->m_KeyStr = (char*)gj_malloc( key_str_size , "Object Key String" );
+        memcpy( member->m_KeyStr, key, key_str_size );
+        member->m_KeyHash = gj_crc32( key );
+        member->m_Value   = value;
+
+        gjValue ret_val;
+        ret_val.idx = member_idx;
+        ret_val.gen = member->m_Gen;
+        return ret_val;
+      }
+      else
+      {
+        gj_assert( "Attempting to create object member, but the  member pool is full. You may be out of memory" );
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to add member to a value that isn't an object" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to add member to a value that has been freed" );
+  }
+
+  return gjValue();
+}
+
+//---------------------------------------------------------------------------------
+void gjValue::removeMember( const char* key )
+{
+  removeMember( gj_crc32( key ) );
+}
+
+//---------------------------------------------------------------------------------
+void gjValue::removeMember( uint32_t key_crc32 )
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    if ( s_ValuePool[ idx ].m_Type == gjValueType::kObject )
+    {
+      const _gjMember* freed_elem  = gj_freeMember( &s_ValuePool[ idx ].m_ObjectStart, key_crc32 );
+      if ( freed_elem != nullptr )
+      {
+        _gjValue* freed_value = &s_ValuePool[ freed_elem->m_Value.idx ];
+        gj_freeValueData( freed_value );
+        gj_freeValue    ( freed_elem->m_Value.idx );
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to remove member from a value that isn't an object" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to remove member from a value that has been freed" );
+  }
+}
+
+//---------------------------------------------------------------------------------
+void gjValue::clearObject()
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    if ( s_ValuePool[ idx ].m_Type == gjValueType::kObject )
+    {
+      gj_freeValueData( &s_ValuePool[ idx ] );
+      _gjValue* val = &s_ValuePool[ idx ];
+      val->m_ObjectStart.m_Idx = (uint32_t)-1;
+      val->m_ObjectStart.m_Gen = (uint32_t)-1;
+    }
+    else
+    {
+      gj_assert( "Attempting to clear array on a value that isn't an array" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to clear array on a value that has been freed" );
+  }
 }
 
 //---------------------------------------------------------------------------------
@@ -1084,4 +1473,228 @@ void gj_deleteValue( gjValue val )
   {
     gj_freeValue( val.idx );
   }
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_getArrayElemFreeCount()
+{
+  uint32_t count = 0;
+  uint32_t idx = s_ArrayPoolHead;
+  while ( idx != kArrayIdxTail )
+  {
+    count++;
+    idx = s_ArrayPool[ idx ].m_Next;
+  }
+
+  return count;
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_getObjectMemberFreeCount()
+{
+  uint32_t count = 0;
+  uint32_t idx = s_MemberPoolHead;
+  while ( idx != kMemberIdxTail )
+  {
+    count++;
+    idx = s_MemberPool[ idx ].m_Next;
+  }
+
+  return count;
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_getValueAllocedCount()
+{
+  uint32_t count = 0;
+  for ( uint32_t i_word = 0; i_word < s_ValueBitsetWordCount; ++i_word )
+  {
+    count += (uint32_t)__popcnt64( s_ValueBitset[i_word] );
+  }
+  return count;
+}
+
+//---------------------------------------------------------------------------------
+gjUsageStats gj_getUsageStats()
+{
+  gjUsageStats stats;
+  stats.m_FreeArrayElements = gj_getArrayElemFreeCount();
+  stats.m_UsedArrayElements = s_Config.max_value_count - stats.m_FreeArrayElements;
+  stats.m_FreeObjectMembers = gj_getObjectMemberFreeCount();
+  stats.m_UsedObjectMembers = s_Config.max_value_count - stats.m_UsedObjectMembers;
+  stats.m_UsedValues        = gj_getValueAllocedCount();
+  stats.m_FreeValues        = s_Config.max_value_count - stats.m_UsedValues;
+
+  return stats;
+
+}
+
+//---------------------------------------------------------------------------------
+gjValue gj_parse( const char* json_string )
+{
+  UNREFERENCED_PARAMETER( json_string );
+}
+
+//---------------------------------------------------------------------------------
+gjSerializeOptions gj_getDefaultSerializeOptions()
+{
+  gjSerializeOptions options;
+  options.mode          = gjSerializeMode::kPretty;
+  options.newline_style = gjNewlineStyle::kLinux;
+  options.indent_amt    = 2;
+
+  return options;
+}
+
+//---------------------------------------------------------------------------------
+gjSerializer::gjSerializer( gjValue obj_to_serialize, gjSerializeOptions* options )
+: m_Obj( obj_to_serialize )
+, m_Options( options ? *options : gj_getDefaultSerializeOptions() )
+, m_StringData( nullptr )
+{
+}
+
+//---------------------------------------------------------------------------------
+gjSerializer::~gjSerializer()
+{
+  if ( m_StringData != nullptr )
+  {
+    gj_free( m_StringData );
+  }
+}
+
+//---------------------------------------------------------------------------------
+constexpr size_t kNewlineLens[] = {
+  2,
+  1
+};
+static_assert( sizeof( kNewlineLens ) / sizeof( *kNewlineLens ) == (size_t)gjNewlineStyle::kCount, "The must stay in sync" );
+
+//---------------------------------------------------------------------------------
+size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* options, size_t indent_amt = 0 )
+{
+  const size_t newline_len    = options->mode == gjSerializeMode::kPretty ? kNewlineLens[ (uint32_t)options->newline_style ] : 0;
+  const size_t new_indent_amt = options->mode == gjSerializeMode::kPretty ? options->indent_amt                    : 0;
+
+  if ( gj_isValueAlloced( val_handle.idx, val_handle.gen ) )
+  {
+    _gjValue* val = &s_ValuePool[ val_handle.idx ];
+    switch ( val->m_Type )
+    {
+    case gjValueType::kNull:
+    {
+      return 4; // null
+    }
+    case gjValueType::kObject:
+    {
+      const size_t local_indent_amt = indent_amt + new_indent_amt;
+      size_t sz = 1 + newline_len; // {
+
+      _gjMember* member = &s_MemberPool[ val->m_ObjectStart.m_Idx ];
+      if ( member->m_Gen == val->m_ObjectStart.m_Gen )
+      {
+        while ( member->m_Next != kMemberIdxTail )
+        {
+          sz += local_indent_amt + 5 + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+          sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
+          sz += 1 + newline_len; // ,
+        }
+        sz += local_indent_amt + 5 + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+        sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
+        sz += newline_len;
+      }
+      else
+      {
+        gj_assert( "attempting to serialize an object member that has been freed" );
+      }
+      sz += indent_amt + 1 + newline_len; // }
+      return sz;
+    }
+    case gjValueType::kArray:
+    {
+      size_t sz = 1 + newline_len; // [
+
+      _gjArrayElem* elem = &s_ArrayPool[ val->m_ArrayStart.m_Idx ];
+      if ( elem->m_Gen == val->m_ArrayStart.m_Gen )
+      {
+        const size_t local_indent_amt = indent_amt + new_indent_amt;
+        while ( elem->m_Next != kArrayIdxTail )
+        {
+          sz += local_indent_amt + newline_len + 1; // ,
+          sz += gj_getRequiredSerializedSize( elem->m_Value, options, local_indent_amt );
+          elem = &s_ArrayPool[ elem->m_Next ];
+        }
+
+        sz += local_indent_amt + newline_len;
+        sz += gj_getRequiredSerializedSize( elem->m_Value, options, local_indent_amt );
+      }
+      else
+      {
+        gj_assert( "attempting to serialize an array element that has been freed" );
+      }
+
+      sz += indent_amt + newline_len + 1; // ]
+      return sz;
+    }
+    case gjValueType::kString:
+    {
+      return 2 + gj_StrLen( val->m_Str ); // "<string>"
+    }
+    case gjValueType::kNumber:
+    {
+      switch ( val->m_SubType )
+      {
+        case kGjSubValueTypeInt:
+        {
+          return 11;
+        }
+        break;
+        case kGjSubValueTypeU64:
+        {
+          return 20;
+        }
+        break;
+        case kGjSubValueTypeFloat:
+        {
+          return 20; // todo: this is likely not correct
+        }
+        break;
+      }
+    }
+    case gjValueType::kBool:
+    {
+      return val->m_Bool ? 4 : 5;
+    }
+    default:
+      gj_assert( "Attempt to serialize unknown type!" );
+    }
+  }
+  else
+  {
+    gj_assert( "attempting to serialize freed value" );
+  }
+
+  return 0;
+}
+
+//---------------------------------------------------------------------------------
+void gjSerializer::serialize()
+{
+  // gather the size needed
+  size_t str_sz = gj_getRequiredSerializedSize( m_Obj, &m_Options );
+  if ( m_StringData != nullptr )
+  {
+    gj_free( m_StringData );
+  }
+
+  m_StringData = (char*)gj_malloc( str_sz, "Serialized string data" );
+  char* cursor = m_StringData;
+
+  UNREFERENCED_PARAMETER( cursor );
+}
+
+//---------------------------------------------------------------------------------
+const char* gjSerializer::getString()
+{
+  return m_StringData ? m_StringData : "";
 }
