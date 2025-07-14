@@ -75,7 +75,7 @@ struct gjValue
   uint32_t    getElementCount() const;
   gjValue     getElement     ( uint32_t elem_idx ) const;
 
-  gjValue     insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
+  void        insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
   void        removeElement  ( uint32_t remove_idx );
   void        clearArray     ();
   
@@ -86,7 +86,7 @@ struct gjValue
   bool        hasMember     ( const char* key       ) const;
   bool        hasMember     ( uint32_t    key_crc32 ) const;
 
-  gjValue     addMember     ( const char* key, gjValue value );
+  void        addMember     ( const char* key, gjValue value );
   void        removeMember  ( const char* key       );
   void        removeMember  ( uint32_t    key_crc32 );
   void        clearObject   ();
