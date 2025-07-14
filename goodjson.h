@@ -13,7 +13,7 @@ gjConfig gj_getDefaultConfig();
 
 //---------------------------------------------------------------------------------
 // Must be called before any functionality.
-// Custom allocators should be set up prior to calling this
+// If desired, custom allocators should be set up prior to calling this
 void gj_init    ( const gjConfig* config );
 void gj_shutdown();
 

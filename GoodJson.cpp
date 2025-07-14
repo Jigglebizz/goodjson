@@ -73,7 +73,7 @@ constexpr uint32_t kCrc32Lookup[256] = {
 };
 
 //---------------------------------------------------------------------------------
-uint32_t gj_crc32( const char* str ) //const void* data, size_t length )
+uint32_t gj_crc32( const char* str )
 {
   uint32_t length = (uint32_t)gj_StrLen( str );
 
@@ -1619,7 +1619,7 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
           gj_assert( "attempting to serialize an object member that has been freed" );
         }
       }
-      sz += indent_amt + 1 + newline_len; // }
+      sz += indent_amt + 1; // }
       return sz;
     }
     case gjValueType::kArray:
@@ -1767,7 +1767,6 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
 
       cursor = gj_addIndent( cursor, indent_amt,  using_tabs );
       cursor = gj_addChars ( cursor, "}",         1          );
-      cursor = gj_addChars ( cursor, newline_str, newline_len );
       return cursor;
     }
     case gjValueType::kArray:
@@ -1805,7 +1804,7 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
     case gjValueType::kString:
     {
       cursor = gj_addChars( cursor, "\"", 1 );
-      cursor = gj_addChars( cursor, val->m_Str, strlen( val->m_Str ) );
+      cursor = gj_addChars( cursor, val->m_Str, gj_StrLen( val->m_Str ) );
       cursor = gj_addChars( cursor, "\"", 1 );
       return cursor;
     }
@@ -1816,19 +1815,19 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
         case kGjSubValueTypeInt:
         {
           snprintf( cursor, 10, "%d", val->m_Int );
-          return cursor + strlen( cursor );
+          return cursor + gj_StrLen( cursor );
         }
         break;
         case kGjSubValueTypeU64:
         {
           snprintf( cursor, 20, "%llu", val->m_U64 );
-          return cursor + strlen( cursor );
+          return cursor + gj_StrLen( cursor );
         }
         break;
         case kGjSubValueTypeFloat:
         {
           snprintf( cursor, 20, "%0.18f", val->m_Float );
-          return cursor + strlen( cursor );
+          return cursor + gj_StrLen( cursor );
         }
         break;
       }
@@ -1837,11 +1836,11 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
     {
       if ( val->m_Bool )
       {
-        return gj_addChars( cursor, "True", 4 );
+        return gj_addChars( cursor, "true", 4 );
       }
       else
       {
-        return gj_addChars( cursor, "False", 5 );
+        return gj_addChars( cursor, "false", 5 );
       }
     }
     default:
