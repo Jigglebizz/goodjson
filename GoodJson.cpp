@@ -1976,12 +1976,12 @@ bool gj_lexComma( _gjLexContext* ctx )
 //---------------------------------------------------------------------------------
 bool gj_lexColon( _gjLexContext* ctx )
 {
-  if ( *ctx->m_Cursor == ',' )
+  if ( *ctx->m_Cursor == ':' )
   {
     LexSym* sym   = gj_newSym( ctx );
     sym->m_Str    = ctx->m_Cursor;
     sym->m_StrLen = 1;
-    sym->m_Type   = kSymComma;
+    sym->m_Type   = kSymColon;
     ctx->m_Cursor++;
     return true;
   }
@@ -2057,13 +2057,13 @@ bool gj_lexFloat( _gjLexContext* ctx )
   if ( gj_isDigit( *ctx->m_Cursor ) || *ctx->m_Cursor == '-' )
   {
     bool has_point = false;
-    while ( gj_isDigit( *ctx->m_Cursor )
-        || *ctx->m_Cursor == '-'
-        || *ctx->m_Cursor == '.'
-        || *ctx->m_Cursor == 'e'
-        || *ctx->m_Cursor == 'E' )
+    while ( gj_isDigit( *cursor )
+        || *cursor == '-'
+        || *cursor == '.'
+        || *cursor == 'e'
+        || *cursor == 'E' )
     {
-      has_point |= (*ctx->m_Cursor == '.');
+      has_point |= (*cursor == '.');
       cursor++;
     }
 
@@ -2087,7 +2087,7 @@ bool gj_lexInt( _gjLexContext* ctx )
   char*   cursor  = nullptr;
   int32_t integer = strtol( ctx->m_Cursor, &cursor, 10 );
 
-  if ( integer != 0 || errno == 0 )
+  if ( integer != 0 || cursor != ctx->m_Cursor )
   {
     if ( integer != LONG_MAX && integer != LONG_MIN )
     {
@@ -2109,7 +2109,7 @@ bool gj_lexU64( _gjLexContext* ctx )
   char*    cursor  = nullptr;
   uint64_t integer = strtoull( ctx->m_Cursor, &cursor, 10 );
 
-  if ( integer != 0 || errno == 0 )
+  if ( integer != 0 || cursor != ctx->m_Cursor )
   {
     if ( integer != LLONG_MAX && integer != LLONG_MIN )
     {
@@ -2179,8 +2179,7 @@ gjValue gj_parse( const char* json_string, size_t string_len )
   while ( *lex_ctx.m_Cursor )
   {
     gj_lexWhitespace( &lex_ctx );
-
-    if ( false ==
+    const bool valid_lex = 
        gj_lexOpenBrace    ( &lex_ctx ) ||
        gj_lexClosedBrace  ( &lex_ctx ) ||
        gj_lexComma        ( &lex_ctx ) ||
@@ -2192,7 +2191,9 @@ gjValue gj_parse( const char* json_string, size_t string_len )
        gj_lexInt          ( &lex_ctx ) ||
        gj_lexU64          ( &lex_ctx ) ||
        gj_lexBool         ( &lex_ctx ) ||
-       gj_lexNull         ( &lex_ctx ) )
+       gj_lexNull         ( &lex_ctx );
+
+    if ( valid_lex == false )
     {
       gj_assert( "unrecognized format!" );
     }
