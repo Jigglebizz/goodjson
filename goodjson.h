@@ -95,7 +95,7 @@ struct gjValue
 };
 
 //---------------------------------------------------------------------------------
-gjValue     gj_parse        ( const char* json_string );
+gjValue     gj_parse        ( const char* json_string, size_t string_len );
 gjValue     gj_makeArray    ();
 gjValue     gj_makeObject   ();
 void        gj_deleteValue  ( gjValue val );

@@ -1527,14 +1527,6 @@ gjUsageStats gj_getUsageStats()
 }
 
 //---------------------------------------------------------------------------------
-gjValue gj_parse( const char* json_string )
-{
-  UNREFERENCED_PARAMETER( json_string );
-
-  return gjValue{};
-}
-
-//---------------------------------------------------------------------------------
 gjSerializeOptions gj_getDefaultSerializeOptions()
 {
   gjSerializeOptions options;
@@ -1875,4 +1867,340 @@ void gjSerializer::serialize()
 const char* gjSerializer::getString()
 {
   return m_StringData ? m_StringData : "";
+}
+
+//---------------------------------------------------------------------------------
+enum LexSymType : uint32_t
+{
+  kSymOpenBrace,
+  kSymClosedBrace,
+  kSymComma,
+  kSymColon,
+  kSymOpenBracket,
+  kSymClosedBracket,
+  kSymString,
+  kSymFloat,
+  kSymInt,
+  kSymU64,
+  kSymBool,
+  kSymNull,
+
+  kSymCount
+};
+
+//---------------------------------------------------------------------------------
+struct LexSym
+{
+  const char* m_Str;
+  LexSymType  m_Type;
+  uint32_t    m_StrLen;
+};
+
+//---------------------------------------------------------------------------------
+struct _gjLexContext
+{
+  const char* m_Cursor;
+  LexSym*     m_Syms;
+  size_t      m_MaxLen;
+  uint32_t    m_SymCount;
+};
+
+//---------------------------------------------------------------------------------
+void gj_lexWhitespace( _gjLexContext* ctx )
+{
+  while ( *ctx->m_Cursor == ' '  ||
+          *ctx->m_Cursor == '\r' ||
+          *ctx->m_Cursor == '\n' ||
+          *ctx->m_Cursor == '\t' )
+  {
+    ctx->m_Cursor++;
+  }
+}
+
+//---------------------------------------------------------------------------------
+LexSym* gj_newSym( _gjLexContext* ctx )
+{
+  if ( ctx->m_SymCount == ctx->m_MaxLen )
+  {
+    gj_assert( "ran out of space in lex syms. You may need to provide a larger max count in the initialization config for this data" );
+  }
+  return &ctx->m_Syms[ ctx->m_SymCount++ ];
+}
+
+
+//---------------------------------------------------------------------------------
+bool gj_lexOpenBrace( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == '{' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymOpenBrace;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexClosedBrace( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == '}' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymClosedBrace;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexComma( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == ',' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymComma;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexColon( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == ',' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymComma;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexOpenBracket( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == '[' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymOpenBracket;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexClosedBracket( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == ']' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymClosedBracket;
+    ctx->m_Cursor++;
+    return true;
+  }
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexString( _gjLexContext* ctx )
+{
+  if ( *ctx->m_Cursor == '"' )
+  {
+    LexSym* sym   = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 1;
+    sym->m_Type   = kSymString;
+    ctx->m_Cursor++;
+
+    while ( *ctx->m_Cursor != '"' && *(ctx->m_Cursor - 1) != '\\' )
+    {
+      sym->m_StrLen++;
+      ctx->m_Cursor++;
+    }
+
+    ctx->m_Cursor++;
+    sym->m_StrLen++;
+
+    return true;
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_isDigit( char c )
+{
+  return c >= '0' && c <= '9';
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexFloat( _gjLexContext* ctx )
+{
+  const char* cursor = ctx->m_Cursor;
+  if ( gj_isDigit( *ctx->m_Cursor ) || *ctx->m_Cursor == '-' )
+  {
+    bool has_point = false;
+    while ( gj_isDigit( *ctx->m_Cursor )
+        || *ctx->m_Cursor == '-'
+        || *ctx->m_Cursor == '.'
+        || *ctx->m_Cursor == 'e'
+        || *ctx->m_Cursor == 'E' )
+    {
+      has_point |= (*ctx->m_Cursor == '.');
+      cursor++;
+    }
+
+    if ( has_point )
+    {
+      LexSym* sym = gj_newSym( ctx );
+      sym->m_Str    = ctx->m_Cursor;
+      sym->m_StrLen = (uint32_t)(cursor - ctx->m_Cursor);
+      sym->m_Type = kSymFloat;
+      ctx->m_Cursor = cursor;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexInt( _gjLexContext* ctx )
+{
+  char*   cursor  = nullptr;
+  int32_t integer = strtol( ctx->m_Cursor, &cursor, 10 );
+
+  if ( integer != 0 || errno == 0 )
+  {
+    if ( integer != LONG_MAX && integer != LONG_MIN )
+    {
+      LexSym* sym = gj_newSym( ctx );
+      sym->m_Str = ctx->m_Cursor;
+      sym->m_StrLen = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_Type   = kSymInt;
+      ctx->m_Cursor = cursor;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexU64( _gjLexContext* ctx )
+{
+  char*    cursor  = nullptr;
+  uint64_t integer = strtoull( ctx->m_Cursor, &cursor, 10 );
+
+  if ( integer != 0 || errno == 0 )
+  {
+    if ( integer != LLONG_MAX && integer != LLONG_MIN )
+    {
+      LexSym* sym = gj_newSym( ctx );
+      sym->m_Str = ctx->m_Cursor;
+      sym->m_StrLen = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_Type   = kSymU64;
+      ctx->m_Cursor = cursor;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexBool( _gjLexContext* ctx )
+{
+  if ( strncmp( ctx->m_Cursor, "true", 4 ) == 0 )
+  {
+    LexSym* sym = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 4;
+    sym->m_Type   = kSymBool;
+    ctx->m_Cursor += 4;
+    return true;
+  }
+
+  if ( strncmp( ctx->m_Cursor, "false", 5 ) == 0 )
+  {
+    LexSym* sym = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 5;
+    sym->m_Type   = kSymBool;
+    ctx->m_Cursor += 5;
+    return true;
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+bool gj_lexNull( _gjLexContext* ctx )
+{
+  if ( strncmp( ctx->m_Cursor, "null", 4 ) == 0 )
+  {
+    LexSym* sym = gj_newSym( ctx );
+    sym->m_Str    = ctx->m_Cursor;
+    sym->m_StrLen = 4;
+    sym->m_Type   = kSymNull;
+    ctx->m_Cursor += 4;
+    return true;
+  }
+
+  return false;
+}
+
+//---------------------------------------------------------------------------------
+gjValue gj_parse( const char* json_string, size_t string_len )
+{
+  _gjLexContext lex_ctx;
+  lex_ctx.m_Cursor   = json_string;
+  lex_ctx.m_MaxLen   = string_len;
+  lex_ctx.m_Syms     = (LexSym*)gj_malloc( sizeof( *lex_ctx.m_Syms ) * lex_ctx.m_MaxLen, "Lexer scratch" );
+  lex_ctx.m_SymCount = 0;
+
+  while ( *lex_ctx.m_Cursor )
+  {
+    gj_lexWhitespace( &lex_ctx );
+
+    if ( false ==
+       gj_lexOpenBrace    ( &lex_ctx ) ||
+       gj_lexClosedBrace  ( &lex_ctx ) ||
+       gj_lexComma        ( &lex_ctx ) ||
+       gj_lexColon        ( &lex_ctx ) ||
+       gj_lexOpenBracket  ( &lex_ctx ) ||
+       gj_lexClosedBracket( &lex_ctx ) ||
+       gj_lexString       ( &lex_ctx ) ||
+       gj_lexFloat        ( &lex_ctx ) ||
+       gj_lexInt          ( &lex_ctx ) ||
+       gj_lexU64          ( &lex_ctx ) ||
+       gj_lexBool         ( &lex_ctx ) ||
+       gj_lexNull         ( &lex_ctx ) )
+    {
+      gj_assert( "unrecognized format!" );
+    }
+  }
+
+
+
+  gj_free( lex_ctx.m_Syms );
+
+  return gjValue{};
 }
