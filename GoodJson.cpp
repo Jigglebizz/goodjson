@@ -1870,7 +1870,7 @@ const char* gjSerializer::getString()
 }
 
 //---------------------------------------------------------------------------------
-enum LexSymType : uint32_t
+enum _gjLexSymType : uint32_t
 {
   kSymOpenBrace,
   kSymClosedBrace,
@@ -1889,20 +1889,21 @@ enum LexSymType : uint32_t
 };
 
 //---------------------------------------------------------------------------------
-struct LexSym
+struct _gjLexSym
 {
-  const char* m_Str;
-  LexSymType  m_Type;
-  uint32_t    m_StrLen;
+  const char*    m_Str;
+  _gjLexSymType  m_Type;
+  uint32_t       m_StrLen;
 };
 
 //---------------------------------------------------------------------------------
 struct _gjLexContext
 {
   const char* m_Cursor;
-  LexSym*     m_Syms;
+  _gjLexSym*  m_Syms;
   size_t      m_MaxLen;
   uint32_t    m_SymCount;
+  uint32_t    m_ReadIdx;
 };
 
 //---------------------------------------------------------------------------------
@@ -1918,7 +1919,7 @@ void gj_lexWhitespace( _gjLexContext* ctx )
 }
 
 //---------------------------------------------------------------------------------
-LexSym* gj_newSym( _gjLexContext* ctx )
+_gjLexSym* gj_newSym( _gjLexContext* ctx )
 {
   if ( ctx->m_SymCount == ctx->m_MaxLen )
   {
@@ -1933,10 +1934,10 @@ bool gj_lexOpenBrace( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == '{' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymOpenBrace;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymOpenBrace;
     ctx->m_Cursor++;
     return true;
   }
@@ -1948,10 +1949,10 @@ bool gj_lexClosedBrace( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == '}' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymClosedBrace;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymClosedBrace;
     ctx->m_Cursor++;
     return true;
   }
@@ -1963,7 +1964,7 @@ bool gj_lexComma( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == ',' )
   {
-    LexSym* sym   = gj_newSym( ctx );
+    _gjLexSym* sym   = gj_newSym( ctx );
     sym->m_Str    = ctx->m_Cursor;
     sym->m_StrLen = 1;
     sym->m_Type   = kSymComma;
@@ -1978,10 +1979,10 @@ bool gj_lexColon( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == ':' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymColon;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymColon;
     ctx->m_Cursor++;
     return true;
   }
@@ -1993,10 +1994,10 @@ bool gj_lexOpenBracket( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == '[' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymOpenBracket;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymOpenBracket;
     ctx->m_Cursor++;
     return true;
   }
@@ -2008,10 +2009,10 @@ bool gj_lexClosedBracket( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == ']' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymClosedBracket;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymClosedBracket;
     ctx->m_Cursor++;
     return true;
   }
@@ -2023,10 +2024,10 @@ bool gj_lexString( _gjLexContext* ctx )
 {
   if ( *ctx->m_Cursor == '"' )
   {
-    LexSym* sym   = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 1;
-    sym->m_Type   = kSymString;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 1;
+    sym->m_Type    = kSymString;
     ctx->m_Cursor++;
 
     while ( *ctx->m_Cursor != '"' && *(ctx->m_Cursor - 1) != '\\' )
@@ -2069,11 +2070,11 @@ bool gj_lexFloat( _gjLexContext* ctx )
 
     if ( has_point )
     {
-      LexSym* sym = gj_newSym( ctx );
-      sym->m_Str    = ctx->m_Cursor;
-      sym->m_StrLen = (uint32_t)(cursor - ctx->m_Cursor);
-      sym->m_Type = kSymFloat;
-      ctx->m_Cursor = cursor;
+      _gjLexSym* sym = gj_newSym( ctx );
+      sym->m_Str     = ctx->m_Cursor;
+      sym->m_StrLen  = (uint32_t)(cursor - ctx->m_Cursor);
+      sym->m_Type    = kSymFloat;
+      ctx->m_Cursor  = cursor;
       return true;
     }
   }
@@ -2091,11 +2092,11 @@ bool gj_lexInt( _gjLexContext* ctx )
   {
     if ( integer != LONG_MAX && integer != LONG_MIN )
     {
-      LexSym* sym = gj_newSym( ctx );
-      sym->m_Str = ctx->m_Cursor;
-      sym->m_StrLen = (uint32_t)( cursor - ctx->m_Cursor );
-      sym->m_Type   = kSymInt;
-      ctx->m_Cursor = cursor;
+      _gjLexSym* sym = gj_newSym( ctx );
+      sym->m_Str     = ctx->m_Cursor;
+      sym->m_StrLen  = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_Type    = kSymInt;
+      ctx->m_Cursor  = cursor;
       return true;
     }
   }
@@ -2113,11 +2114,11 @@ bool gj_lexU64( _gjLexContext* ctx )
   {
     if ( integer != LLONG_MAX && integer != LLONG_MIN )
     {
-      LexSym* sym = gj_newSym( ctx );
-      sym->m_Str = ctx->m_Cursor;
-      sym->m_StrLen = (uint32_t)( cursor - ctx->m_Cursor );
-      sym->m_Type   = kSymU64;
-      ctx->m_Cursor = cursor;
+      _gjLexSym* sym = gj_newSym( ctx );
+      sym->m_Str     = ctx->m_Cursor;
+      sym->m_StrLen  = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_Type    = kSymU64;
+      ctx->m_Cursor  = cursor;
       return true;
     }
   }
@@ -2130,21 +2131,21 @@ bool gj_lexBool( _gjLexContext* ctx )
 {
   if ( strncmp( ctx->m_Cursor, "true", 4 ) == 0 )
   {
-    LexSym* sym = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 4;
-    sym->m_Type   = kSymBool;
-    ctx->m_Cursor += 4;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 4;
+    sym->m_Type    = kSymBool;
+    ctx->m_Cursor  += 4;
     return true;
   }
 
   if ( strncmp( ctx->m_Cursor, "false", 5 ) == 0 )
   {
-    LexSym* sym = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 5;
-    sym->m_Type   = kSymBool;
-    ctx->m_Cursor += 5;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 5;
+    sym->m_Type    = kSymBool;
+    ctx->m_Cursor  += 5;
     return true;
   }
 
@@ -2156,15 +2157,246 @@ bool gj_lexNull( _gjLexContext* ctx )
 {
   if ( strncmp( ctx->m_Cursor, "null", 4 ) == 0 )
   {
-    LexSym* sym = gj_newSym( ctx );
-    sym->m_Str    = ctx->m_Cursor;
-    sym->m_StrLen = 4;
-    sym->m_Type   = kSymNull;
-    ctx->m_Cursor += 4;
+    _gjLexSym* sym = gj_newSym( ctx );
+    sym->m_Str     = ctx->m_Cursor;
+    sym->m_StrLen  = 4;
+    sym->m_Type    = kSymNull;
+    ctx->m_Cursor  += 4;
     return true;
   }
 
   return false;
+}
+
+struct _gjAstNode;
+
+//---------------------------------------------------------------------------------
+struct _gjAstNodeMember
+{
+  char*    m_Key;
+  uint32_t m_ValueIdx;
+};
+
+//---------------------------------------------------------------------------------
+struct _gjAstNode
+{
+  enum NodeType
+  {
+    kTypeObject,
+    kTypeMember,
+    kTypeArray,
+    kTypeString,
+    kTypeInt,
+    kTypeU64,
+    kTypeFloat,
+    kTypeBool,
+    kTypeNull
+  };
+
+  NodeType m_Type;
+  union
+  {
+    uint32_t         m_ObjectStartIdx;
+    _gjAstNodeMember m_Member;
+    uint32_t         m_ArrayStartIdx;
+    char*            m_String;
+    int              m_Int;
+    uint64_t         m_U64;
+    float            m_Float;
+    bool             m_Bool;
+  };
+
+  uint32_t m_Next;
+};
+
+//---------------------------------------------------------------------------------
+static constexpr uint32_t kAstNodeTailIdx = (uint32_t)-1;
+
+//---------------------------------------------------------------------------------
+struct _gjAstContext
+{
+  _gjAstNode* m_Nodes;
+  uint32_t    m_NodeCount;
+  uint32_t    m_NodeHead;
+};
+
+//---------------------------------------------------------------------------------
+_gjAstNode* gj_allocAstNode( _gjAstContext* ctx, uint32_t* out_idx, uint32_t head = kAstNodeTailIdx )
+{
+  if ( ctx->m_NodeHead != kAstNodeTailIdx )
+  {
+    if ( head == kAstNodeTailIdx )
+    {
+      *out_idx = ctx->m_NodeHead;
+      _gjAstNode* node = &ctx->m_Nodes[ ctx->m_NodeHead ];
+      ctx->m_NodeHead = node->m_Next;
+      node->m_Next = kAstNodeTailIdx;
+
+      return node;
+    }
+
+    _gjAstNode* prev_node = &ctx->m_Nodes[ head ];
+    while ( prev_node->m_Next != kAstNodeTailIdx )
+    {
+      prev_node = &ctx->m_Nodes[ prev_node->m_Next ];
+    }
+
+    prev_node->m_Next = ctx->m_NodeHead;
+    *out_idx = prev_node->m_Next;
+    _gjAstNode* new_node = &ctx->m_Nodes[ prev_node->m_Next ];
+    ctx->m_NodeHead = new_node->m_Next;
+    new_node->m_Next = kAstNodeTailIdx;
+
+    return new_node;
+  }
+
+  return nullptr;
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast );
+
+//---------------------------------------------------------------------------------
+uint32_t gj_parseMember( _gjLexContext* lex, _gjAstContext* ast )
+{
+  _gjLexSym* key_str_sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+  if ( key_str_sym->m_Type != kSymString )
+  {
+    gj_assert( "Unexpected token!" );
+    return (uint32_t)-1;
+  }
+
+  uint32_t member_idx;
+  _gjAstNode* member_node = gj_allocAstNode( ast, &member_idx );
+  
+  member_node->m_Member.m_Key = (char*)gj_malloc( key_str_sym->m_StrLen + 1, "AST key string" );
+  memcpy( member_node->m_Member.m_Key, key_str_sym->m_Str, key_str_sym->m_StrLen );
+  member_node->m_Member.m_Key[ key_str_sym->m_StrLen ] = '\0';
+  
+  if ( lex->m_Syms[ lex->m_ReadIdx++ ].m_Type != kSymColon )
+  {
+    gj_assert( "Unexpected token!" );
+    return (uint32_t)-1;
+  }
+  
+  member_node->m_Member.m_ValueIdx = gj_parse( lex, ast );
+  member_node->m_Next = kAstNodeTailIdx;
+
+  return member_idx;
+}
+
+//---------------------------------------------------------------------------------
+// returns index into ast node array
+uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
+{
+  _gjLexSym* sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+  switch ( sym->m_Type )
+  {
+    case kSymInt:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type = _gjAstNode::kTypeInt;
+      node->m_Int  = strtol( sym->m_Str, nullptr, 10 );
+      return idx;
+    }
+    break;
+    case kSymU64:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type = _gjAstNode::kTypeU64;
+      node->m_U64  = strtoull( sym->m_Str, nullptr, 10 );
+      return idx;
+    }
+    break;
+    case kSymFloat:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type  = _gjAstNode::kTypeFloat;
+      node->m_Float = strtof( sym->m_Str, nullptr );
+      return idx;
+    }
+    break;
+    case kSymBool:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type  = _gjAstNode::kTypeBool;
+      node->m_Bool  = strncmp( sym->m_Str, "true", 4 ) == 0;
+      return idx;
+    }
+    break;
+    case kSymString:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type   = _gjAstNode::kTypeString;
+      node->m_String = (char*)gj_malloc( sym->m_StrLen + 1, "AST string value" );
+      memcpy( node->m_String, sym->m_Str, sym->m_StrLen );
+      node->m_String[ sym->m_StrLen ] = '\0';
+      return idx;
+    }
+    break;
+    case kSymNull:
+    {
+      uint32_t idx;
+      _gjAstNode* node = gj_allocAstNode( ast, &idx );
+      node->m_Type  = _gjAstNode::kTypeNull;
+      return idx;
+    }
+    break;
+    case kSymOpenBrace:
+    {
+      uint32_t obj_idx;
+      _gjAstNode* obj_node = gj_allocAstNode( ast, &obj_idx );
+      obj_node->m_Type           = _gjAstNode::kTypeObject;
+      obj_node->m_ObjectStartIdx = kMemberIdxTail;
+
+      sym = &lex->m_Syms[ lex->m_ReadIdx ];
+      if (sym->m_Type == kSymString )
+      {
+        obj_node->m_ObjectStartIdx = gj_parseMember( lex, ast );
+        if ( obj_node->m_ObjectStartIdx == kMemberIdxTail )
+        {
+          return (uint32_t)-1;
+        }
+        _gjAstNode* prev_node = &ast->m_Nodes[ obj_node->m_ObjectStartIdx ];
+
+        sym = &lex->m_Syms[ lex->m_ReadIdx ];
+        while ( sym->m_Type == kSymComma )
+        {
+          lex->m_ReadIdx++;
+          prev_node->m_Next = gj_parseMember( lex, ast );
+          
+          if ( prev_node->m_Next == kMemberIdxTail )
+          {
+            return (uint32_t)-1;
+          }
+          sym = &lex->m_Syms[ lex->m_ReadIdx ];
+        }
+      }
+
+      if ( sym->m_Type != kSymClosedBrace )
+      {
+        gj_assert( "unrecognized token!" );
+        return (uint32_t)-1;
+      }
+
+      return obj_idx;
+    }
+    break;
+    case kSymOpenBracket:
+    {
+      
+    }
+    break;
+    default:
+    gj_assert( "Unexpected token!" );
+  }
+
+  return (uint32_t)-1;
 }
 
 //---------------------------------------------------------------------------------
@@ -2173,8 +2405,9 @@ gjValue gj_parse( const char* json_string, size_t string_len )
   _gjLexContext lex_ctx;
   lex_ctx.m_Cursor   = json_string;
   lex_ctx.m_MaxLen   = string_len;
-  lex_ctx.m_Syms     = (LexSym*)gj_malloc( sizeof( *lex_ctx.m_Syms ) * lex_ctx.m_MaxLen, "Lexer scratch" );
+  lex_ctx.m_Syms     = (_gjLexSym*)gj_malloc( sizeof( *lex_ctx.m_Syms ) * lex_ctx.m_MaxLen, "Lexer scratch" );
   lex_ctx.m_SymCount = 0;
+  lex_ctx.m_ReadIdx  = 0;
 
   while ( *lex_ctx.m_Cursor )
   {
@@ -2199,9 +2432,40 @@ gjValue gj_parse( const char* json_string, size_t string_len )
     }
   }
 
+  _gjAstContext ast_ctx;
+  ast_ctx.m_Nodes     = (_gjAstNode*)gj_malloc( sizeof( *ast_ctx.m_Nodes ) * lex_ctx.m_SymCount, "AST Node Scratch" );
+  ast_ctx.m_NodeCount = lex_ctx.m_SymCount;
+  ast_ctx.m_NodeHead  = 0;
 
+  for ( uint32_t i_node = 0; i_node < ast_ctx.m_NodeCount; ++i_node )
+  {
+    ast_ctx.m_Nodes[ i_node ].m_Next = i_node + 1;
+  }
+  ast_ctx.m_Nodes[ ast_ctx.m_NodeCount - 1 ].m_Next = kAstNodeTailIdx;
+
+  if ( gj_parse( &lex_ctx, &ast_ctx ) == (uint32_t)-1 )
+  {
+    gj_free( lex_ctx.m_Syms );
+    for ( uint32_t i_node = 0; i_node < ast_ctx.m_NodeCount; ++i_node )
+    {
+      _gjAstNode* node = &ast_ctx.m_Nodes[ i_node ];
+      if ( node->m_Type == _gjAstNode::kTypeString )
+      {
+        gj_free( node->m_String );
+      }
+      else if ( node->m_Type == _gjAstNode::kTypeMember )
+      {
+        gj_free( node->m_Member.m_Key );
+      }
+    }
+    gj_free( ast_ctx.m_Nodes );
+    return gjValue{};
+  }
 
   gj_free( lex_ctx.m_Syms );
+
+
+  gj_free( ast_ctx.m_Nodes );
 
   return gjValue{};
 }
