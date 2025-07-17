@@ -288,6 +288,7 @@ _gjValue* gj_allocValue( uint32_t* out_idx )
     return &s_ValuePool[ *out_idx ];
   }
 
+  gj_assert( "Ran out of slots for values" );
   return nullptr;
 }
 
@@ -1469,6 +1470,8 @@ void gj_deleteValue( gjValue val )
 {
   if ( val.idx < s_Config.max_value_count && val.gen == s_ValuePool[val.idx].m_Gen )
   {
+    _gjValue* internal_val = &s_ValuePool[ val.idx ];
+    gj_freeValueData( internal_val );
     gj_freeValue( val.idx );
   }
 }
@@ -1519,7 +1522,7 @@ gjUsageStats gj_getUsageStats()
   stats.m_FreeArrayElements = gj_getArrayElemFreeCount();
   stats.m_UsedArrayElements = s_Config.max_value_count - stats.m_FreeArrayElements;
   stats.m_FreeObjectMembers = gj_getObjectMemberFreeCount();
-  stats.m_UsedObjectMembers = s_Config.max_value_count - stats.m_UsedObjectMembers;
+  stats.m_UsedObjectMembers = s_Config.max_value_count - stats.m_FreeObjectMembers;
   stats.m_UsedValues        = gj_getValueAllocedCount();
   stats.m_FreeValues        = s_Config.max_value_count - stats.m_UsedValues;
 
@@ -1908,15 +1911,18 @@ struct _gjLexContext
 };
 
 //---------------------------------------------------------------------------------
-void gj_lexWhitespace( _gjLexContext* ctx )
+bool gj_lexWhitespace( _gjLexContext* ctx )
 {
-  while ( *ctx->m_Cursor == ' '  ||
-          *ctx->m_Cursor == '\r' ||
-          *ctx->m_Cursor == '\n' ||
-          *ctx->m_Cursor == '\t' )
+  if ( *ctx->m_Cursor == ' '  ||
+       *ctx->m_Cursor == '\r' ||
+       *ctx->m_Cursor == '\n' ||
+       *ctx->m_Cursor == '\t' )
   {
     ctx->m_Cursor++;
+    return true;
   }
+
+  return false;
 }
 
 //---------------------------------------------------------------------------------
@@ -2398,6 +2404,8 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
         return (uint32_t)-1;
       }
 
+      lex->m_ReadIdx++;
+
       return obj_idx;
     }
     break;
@@ -2555,8 +2563,8 @@ gjValue gj_parse( const char* json_string, size_t string_len )
 
   while ( *lex_ctx.m_Cursor )
   {
-    gj_lexWhitespace( &lex_ctx );
     const bool valid_lex = 
+       gj_lexWhitespace   ( &lex_ctx ) ||
        gj_lexOpenBrace    ( &lex_ctx ) ||
        gj_lexClosedBrace  ( &lex_ctx ) ||
        gj_lexComma        ( &lex_ctx ) ||
