@@ -2521,16 +2521,19 @@ gjValue gj_astToValue( _gjAstContext* ast, uint32_t node_idx )
     {
       gjValue arr = gj_makeArray();
 
-      uint32_t    elem_idx  = node->m_ArrayStartIdx;
-      _gjAstNode* elem_node = &ast->m_Nodes[ elem_idx ];
-      if ( elem_node->m_Next != kAstNodeTailIdx )
+      if ( node->m_ArrayStartIdx != kAstNodeTailIdx )
       {
-        arr.insertElement( gj_astToValue( ast, elem_idx ) );
-        elem_idx  = elem_node->m_Next;
-        elem_node = &ast->m_Nodes[ elem_idx ];
-      }
+        uint32_t    elem_idx  = node->m_ArrayStartIdx;
+        _gjAstNode* elem_node = &ast->m_Nodes[ elem_idx ];
+        while ( elem_node->m_Next != kAstNodeTailIdx )
+        {
+          arr.insertElement( gj_astToValue( ast, elem_idx ) );
+          elem_idx  = elem_node->m_Next;
+          elem_node = &ast->m_Nodes[ elem_idx ];
+        }
 
-      arr.insertElement( gj_astToValue( ast, elem_idx ) );
+        arr.insertElement( gj_astToValue( ast, elem_idx ) );
+      }
 
       return arr;
     }
