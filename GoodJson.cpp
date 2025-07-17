@@ -679,7 +679,8 @@ gjValue::gjValue( const char* v )
     val->m_SubType = kGjSubValueTypeInvalid;
 
     size_t str_len = gj_StrLen( v );
-    if ( val->m_Str = (char*)gj_malloc( str_len + 1, "Value String" ) )
+    val->m_Str = (char*)gj_malloc( str_len + 1, "Value String" );
+    if ( val->m_Str != nullptr )
     {
       memcpy( val->m_Str, v, str_len );
       val->m_Str[ str_len ] = '\0';
@@ -2025,8 +2026,8 @@ bool gj_lexString( _gjLexContext* ctx )
   if ( *ctx->m_Cursor == '"' )
   {
     _gjLexSym* sym = gj_newSym( ctx );
-    sym->m_Str     = ctx->m_Cursor;
-    sym->m_StrLen  = 1;
+    sym->m_Str     = ctx->m_Cursor + 1;
+    sym->m_StrLen  = 0;
     sym->m_Type    = kSymString;
     ctx->m_Cursor++;
 
@@ -2037,7 +2038,6 @@ bool gj_lexString( _gjLexContext* ctx )
     }
 
     ctx->m_Cursor++;
-    sym->m_StrLen++;
 
     return true;
   }
@@ -2286,6 +2286,19 @@ uint32_t gj_parseMember( _gjLexContext* lex, _gjAstContext* ast )
 }
 
 //---------------------------------------------------------------------------------
+bool gj_isSymValueType( _gjLexSymType type )
+{
+  return type == kSymBool        ||
+         type == kSymFloat       ||
+         type == kSymInt         ||
+         type == kSymU64         ||
+         type == kSymNull        ||
+         type == kSymOpenBrace   ||
+         type == kSymOpenBracket ||
+         type == kSymString;
+}
+
+//---------------------------------------------------------------------------------
 // returns index into ast node array
 uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
 {
@@ -2352,13 +2365,13 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
       uint32_t obj_idx;
       _gjAstNode* obj_node = gj_allocAstNode( ast, &obj_idx );
       obj_node->m_Type           = _gjAstNode::kTypeObject;
-      obj_node->m_ObjectStartIdx = kMemberIdxTail;
+      obj_node->m_ObjectStartIdx = kAstNodeTailIdx;
 
       sym = &lex->m_Syms[ lex->m_ReadIdx ];
       if (sym->m_Type == kSymString )
       {
         obj_node->m_ObjectStartIdx = gj_parseMember( lex, ast );
-        if ( obj_node->m_ObjectStartIdx == kMemberIdxTail )
+        if ( obj_node->m_ObjectStartIdx == kAstNodeTailIdx)
         {
           return (uint32_t)-1;
         }
@@ -2370,10 +2383,11 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
           lex->m_ReadIdx++;
           prev_node->m_Next = gj_parseMember( lex, ast );
           
-          if ( prev_node->m_Next == kMemberIdxTail )
+          if ( prev_node->m_Next == kAstNodeTailIdx)
           {
             return (uint32_t)-1;
           }
+          prev_node = &ast->m_Nodes[ prev_node->m_Next ];
           sym = &lex->m_Syms[ lex->m_ReadIdx ];
         }
       }
@@ -2389,7 +2403,43 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
     break;
     case kSymOpenBracket:
     {
-      
+      uint32_t arr_idx;
+      _gjAstNode* arr_node      = gj_allocAstNode( ast, &arr_idx );
+      arr_node->m_Type          = _gjAstNode::kTypeArray;
+      arr_node->m_ArrayStartIdx = kAstNodeTailIdx;
+
+      sym = &lex->m_Syms[ lex->m_ReadIdx ];
+      if ( gj_isSymValueType( sym->m_Type ) )
+      {
+        arr_node->m_ArrayStartIdx = gj_parse( lex, ast );
+        _gjAstNode* prev_node = &ast->m_Nodes[ arr_node->m_ArrayStartIdx ];
+        prev_node->m_Next = kAstNodeTailIdx;
+
+        sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+        while ( sym->m_Type == kSymComma )
+        {
+          if ( gj_isSymValueType( lex->m_Syms[ lex->m_ReadIdx ].m_Type ) == false )
+          {
+            gj_assert( "unrecognized symbol!" );
+            return ( uint32_t )-1;
+          }
+
+          prev_node->m_Next = gj_parse( lex, ast );
+          prev_node = &ast->m_Nodes[ prev_node->m_Next ];
+          prev_node->m_Next = kAstNodeTailIdx;
+
+          sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+        }
+      }
+
+      if ( sym->m_Type != kSymClosedBracket )
+      {
+        gj_assert( "unrecognized token!" );
+        return (uint32_t)-1;
+      }
+
+      return arr_idx;
+
     }
     break;
     default:
@@ -2397,6 +2447,97 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
   }
 
   return (uint32_t)-1;
+}
+
+//---------------------------------------------------------------------------------
+gjValue gj_astToValue( _gjAstContext* ast, uint32_t node_idx )
+{
+  _gjAstNode* node = &ast->m_Nodes[ node_idx ];
+  switch ( node->m_Type )
+  {
+    case _gjAstNode::kTypeString:
+    {
+      gjValue val = gjValue( node->m_String );
+      gj_free( node->m_String );
+      return val;
+    }
+    break;
+    case _gjAstNode::kTypeInt:
+    {
+      return gjValue( node->m_Int );
+    }
+    break;
+    case _gjAstNode::kTypeU64:
+    {
+      return gjValue( node->m_U64 );
+    }
+    break;
+    case _gjAstNode::kTypeFloat:
+    {
+      return gjValue( node->m_Float );
+    }
+    break;
+    case _gjAstNode::kTypeBool:
+    {
+      return gjValue( node->m_Bool );
+    }
+    break;
+    case _gjAstNode::kTypeNull:
+    {
+      return gjValue();
+    }
+    break;
+    case _gjAstNode::kTypeObject:
+    {
+      gjValue obj = gj_makeObject();
+      if ( node->m_ObjectStartIdx != kAstNodeTailIdx )
+      {
+        _gjAstNode* member_node = &ast->m_Nodes[ node->m_ObjectStartIdx ];
+        while ( member_node->m_Next != kAstNodeTailIdx )
+        {
+          char* key_str = member_node->m_Member.m_Key;
+
+          obj.addMember( key_str, gj_astToValue( ast, member_node->m_Member.m_ValueIdx ) );
+          gj_free( key_str );
+
+          member_node = &ast->m_Nodes[ member_node->m_Next ];
+        }
+
+        char* key_str = member_node->m_Member.m_Key;
+
+        obj.addMember( key_str, gj_astToValue( ast, member_node->m_Member.m_ValueIdx ) );
+        gj_free( key_str );
+      }
+
+      return obj;
+    }
+    break;
+    case _gjAstNode::kTypeMember:
+    {
+      gj_assert( "malformed ast! This is a bug in the library" );
+    }
+    break;
+    case _gjAstNode::kTypeArray:
+    {
+      gjValue arr = gj_makeArray();
+
+      uint32_t    elem_idx  = node->m_ArrayStartIdx;
+      _gjAstNode* elem_node = &ast->m_Nodes[ elem_idx ];
+      if ( elem_node->m_Next != kAstNodeTailIdx )
+      {
+        arr.insertElement( gj_astToValue( ast, elem_idx ) );
+        elem_idx  = elem_node->m_Next;
+        elem_node = &ast->m_Nodes[ elem_idx ];
+      }
+
+      arr.insertElement( gj_astToValue( ast, elem_idx ) );
+
+      return arr;
+    }
+    break;
+  }
+
+  return gjValue{};
 }
 
 //---------------------------------------------------------------------------------
@@ -2464,8 +2605,9 @@ gjValue gj_parse( const char* json_string, size_t string_len )
 
   gj_free( lex_ctx.m_Syms );
 
+  gjValue value = gj_astToValue( &ast_ctx, 0 );
 
   gj_free( ast_ctx.m_Nodes );
 
-  return gjValue{};
+  return value;
 }
