@@ -1615,13 +1615,13 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
         {
           while ( member->m_Next != kMemberIdxTail )
           {
-            sz += local_indent_amt + 5 + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+            sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_StrLen( member->m_KeyStr ); // "<key>" : 
             sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
             sz += 1 + newline_len; // ,
 
             member = &s_MemberPool[ member->m_Next ];
           }
-          sz += local_indent_amt + 5 + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+          sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_StrLen( member->m_KeyStr ); // "<key>" : 
           sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
           sz += newline_len;
         }
@@ -1752,7 +1752,8 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
             cursor = gj_addIndent( cursor, local_indent_amt, using_tabs                    );
             cursor = gj_addChars ( cursor, "\"",             1                             );
             cursor = gj_addChars ( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
-            cursor = gj_addChars ( cursor, "\" : ",          4                             );
+            cursor = gj_addChars ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
+                                           options->mode == gjSerializeMode::kMinified ? 2     : 4 );
 
             cursor = gj_serialize( cursor, member->m_Value, options, local_indent_amt );
             cursor = gj_addChars ( cursor, ",",              1           );
@@ -1764,7 +1765,8 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
           cursor = gj_addIndent( cursor, local_indent_amt, using_tabs                    );
           cursor = gj_addChars ( cursor, "\"",             1                             );
           cursor = gj_addChars ( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
-          cursor = gj_addChars ( cursor, "\" : ",          4                             );
+          cursor = gj_addChars ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
+                                         options->mode == gjSerializeMode::kMinified ? 2     : 4 );
 
           cursor = gj_serialize( cursor, member->m_Value, options, local_indent_amt );
           cursor = gj_addChars ( cursor, newline_str,      newline_len );
