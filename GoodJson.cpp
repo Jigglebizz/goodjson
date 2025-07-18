@@ -100,6 +100,12 @@ void gj_setAllocator( const gjAllocatorHooks* hooks )
 }
 
 //---------------------------------------------------------------------------------
+void gj_setAssertFn( gjAssertFn assert_fn )
+{
+  s_AssertFn = assert_fn;
+}
+
+//---------------------------------------------------------------------------------
 void* gj_malloc( size_t sz, const char* description )
 {
   if ( s_MallocFn != nullptr )
@@ -183,6 +189,12 @@ enum gjSubValueType : uint8_t
   kGjSubValueTypeInvalid = (uint8_t)-1
 };
 
+#define VAL_TYPE( value ) (gjValueType)(value->m_TypeGroup & 0x07)
+#define VAL_SUBTYPE( value ) (gjSubValueType)((value->m_TypeGroup & 0xf8) >> 3 )
+
+#define ASSIGN_VAL_TYPE( value, type ) value->m_TypeGroup &= ~0x07; value->m_TypeGroup |= ((uint8_t)type & 0x07);
+#define ASSIGN_VAL_SUBTYPE( value, type ) value->m_TypeGroup &= ~0xf8; value->m_TypeGroup |= (((uint8_t)type & 0x1f) << 3);
+
 //---------------------------------------------------------------------------------
 struct _gjValue
 {
@@ -197,8 +209,7 @@ struct _gjValue
     _gjMemberHandle m_ObjectStart;
   };
   uint32_t       m_Gen;
-  gjValueType    m_Type;
-  gjSubValueType m_SubType;
+  uint8_t        m_TypeGroup;
 };
 
 //---------------------------------------------------------------------------------
@@ -548,11 +559,11 @@ bool gj_isValueAlloced( uint32_t idx, uint32_t gen )
 //---------------------------------------------------------------------------------
 void gj_freeValueData( _gjValue* val )
 {
-  if ( val->m_Type == gjValueType::kString )
+  if ( VAL_TYPE( val ) == gjValueType::kString )
   {
     gj_free( val->m_Str );
   }
-  else if ( val->m_Type == gjValueType::kArray )
+  else if ( VAL_TYPE( val ) == gjValueType::kArray )
   {
     _gjArrayHandle arr_start_handle = val->m_ArrayStart;
     _gjArrayElem*  elem = &s_ArrayPool[ arr_start_handle.m_Idx ];
@@ -578,7 +589,7 @@ void gj_freeValueData( _gjValue* val )
       gj_freeArrayElemList( arr_start_handle );
     }
   }
-  else if ( val->m_Type == gjValueType::kObject )
+  else if ( VAL_TYPE( val ) == gjValueType::kObject )
   {
     _gjMemberHandle obj_start_handle = val->m_ObjectStart;
     _gjMember*      member = &s_MemberPool[ obj_start_handle.m_Idx ];
@@ -626,8 +637,8 @@ gjValue::gjValue( int v )
   if ( _gjValue* val = gj_allocValue( &idx ) )
   {
     gen = val->m_Gen;
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeInt;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInt );
     val->m_Int     = v;
   }
 }
@@ -639,8 +650,8 @@ gjValue::gjValue( uint64_t v )
   if ( _gjValue* val = gj_allocValue( &idx ) )
   {
     gen = val->m_Gen;
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeU64;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeU64 );
     val->m_U64     = v;
   }
 }
@@ -652,8 +663,8 @@ gjValue::gjValue( float v )
   if ( _gjValue* val = gj_allocValue( &idx ) )
   {
     gen = val->m_Gen;
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeFloat;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
     val->m_Float   = v;
   }
 }
@@ -665,8 +676,8 @@ gjValue::gjValue( bool v )
   if ( _gjValue* val = gj_allocValue( &idx ) )
   {
     gen = val->m_Gen;
-    val->m_Type    = gjValueType::kBool;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kBool );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
     val->m_Bool    = v;
   }
 }
@@ -678,8 +689,8 @@ gjValue::gjValue( const char* v )
   if ( _gjValue* val = gj_allocValue( &idx ) )
   {
     gen = val->m_Gen;
-    val->m_Type = gjValueType::kString;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kString );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
 
     size_t str_len = gj_StrLen( v );
     val->m_Str = (char*)gj_malloc( str_len + 1, "Value String" );
@@ -706,7 +717,7 @@ gjValueType gjValue::getType() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    return val->m_Type;
+    return VAL_TYPE( val );
   }
 
   gj_assert( "Attempting to get type for deallocated json value" );
@@ -720,9 +731,9 @@ int gjValue::getInt() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kNumber)
+    if ( VAL_TYPE( val ) == gjValueType::kNumber)
     {
-      switch ( val->m_SubType )
+      switch ( VAL_SUBTYPE( val ) )
       {
       case kGjSubValueTypeInt:
       {
@@ -760,9 +771,9 @@ uint64_t gjValue::getU64() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kNumber )
+    if ( VAL_TYPE( val ) == gjValueType::kNumber )
     {
-      switch ( val->m_SubType )
+      switch ( VAL_SUBTYPE( val ) )
       {
       case kGjSubValueTypeInt:
       {
@@ -800,9 +811,9 @@ float gjValue::getFloat() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kNumber )
+    if ( VAL_TYPE( val ) == gjValueType::kNumber )
     {
-      switch ( val->m_SubType )
+      switch ( VAL_SUBTYPE( val ) )
       {
       case kGjSubValueTypeInt:
       {
@@ -841,7 +852,7 @@ const char* gjValue::getString() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if (  val->m_Type == gjValueType::kString )
+    if ( VAL_TYPE( val ) == gjValueType::kString )
     {
       return val->m_Str;
     }
@@ -864,7 +875,7 @@ bool gjValue::getBool() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kString )
+    if ( VAL_TYPE( val ) == gjValueType::kString )
     {
       return val->m_Bool;
     }
@@ -893,8 +904,8 @@ void gjValue::setInt( int v )
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeInt;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInt );
     val->m_Int     = v;
   }
 }
@@ -907,8 +918,8 @@ void gjValue::setU64( uint64_t v )
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeU64;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeU64 );
     val->m_U64     = v;
   }
 }
@@ -921,8 +932,8 @@ void gjValue::setFloat( float v )
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kNumber;
-    val->m_SubType = kGjSubValueTypeFloat;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeFloat );
     val->m_Float   = v;
   }
 }
@@ -935,8 +946,8 @@ void gjValue::setString( const char* str )
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kString;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kString );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
 
     const size_t str_len = gj_StrLen( str );
     val->m_Str     = (char*)gj_malloc( str_len + 1, "setString string" );
@@ -953,8 +964,8 @@ void gjValue::setBool( bool v )
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kBool;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kBool );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
     val->m_Float   = v;
   }
 }
@@ -967,8 +978,8 @@ void gjValue::setNull()
     _gjValue* val = &s_ValuePool[ idx ];
     gj_freeValueData( val );
 
-    val->m_Type    = gjValueType::kNull;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kNull );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
   }
 }
 
@@ -1021,7 +1032,7 @@ uint32_t gjValue::getElementCount() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     const _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kArray )
+    if ( VAL_TYPE( val ) == gjValueType::kArray )
     {
       const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
@@ -1062,7 +1073,7 @@ gjValue gjValue::getElement( uint32_t elem_idx ) const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     const _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kArray )
+    if ( VAL_TYPE( val ) == gjValueType::kArray )
     {
       const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
@@ -1108,7 +1119,7 @@ void gjValue::insertElement( gjValue value, uint32_t insert_idx )
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kArray )
+    if ( VAL_TYPE( val ) == gjValueType::kArray )
     {
       uint32_t arr_head_idx = val->m_ArrayStart.m_Idx;
       _gjArrayElem* elem = gj_allocArrayElem( &arr_head_idx, insert_idx );
@@ -1144,9 +1155,10 @@ void gjValue::removeElement( uint32_t remove_idx )
 {
   if ( gj_isValueAlloced( idx, gen ) )
   {
-    if ( s_ValuePool[ idx ].m_Type == gjValueType::kArray )
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kArray)
     {
-      const _gjArrayElem* freed_elem  = gj_freeArrayElem( &s_ValuePool[ idx ].m_ArrayStart, remove_idx );
+      const _gjArrayElem* freed_elem  = gj_freeArrayElem( &val->m_ArrayStart, remove_idx );
       if ( freed_elem )
       {
         _gjValue* freed_value = &s_ValuePool[ freed_elem->m_Value.idx ];
@@ -1170,10 +1182,10 @@ void gjValue::clearArray()
 {
   if ( gj_isValueAlloced( idx, gen ) )
   {
-    if ( s_ValuePool[ idx ].m_Type == gjValueType::kArray )
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kArray)
     {
-      gj_freeValueData( &s_ValuePool[ idx ] );
-      _gjValue* val = &s_ValuePool[ idx ];
+      gj_freeValueData( val );
       val->m_ArrayStart.m_Idx = (uint32_t)-1;
       val->m_ArrayStart.m_Gen = (uint32_t)-1;
     }
@@ -1198,7 +1210,7 @@ uint32_t gjValue::getMemberCount() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     const _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kObject )
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle obj_handle_start = val->m_ObjectStart;
       if ( obj_handle_start.m_Gen == s_MemberPool[ obj_handle_start.m_Idx ].m_Gen )
@@ -1251,7 +1263,7 @@ gjValue gjValue::getMember( uint32_t key_crc32 ) const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     const _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kObject )
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle member_handle_start = val->m_ObjectStart;
       if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
@@ -1303,7 +1315,7 @@ bool gjValue::hasMember( uint32_t key_crc32 ) const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     const _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kObject )
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle member_handle_start = val->m_ObjectStart;
       if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
@@ -1342,7 +1354,7 @@ void gjValue::addMember( const char* key, gjValue value )
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( val->m_Type == gjValueType::kObject )
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       uint32_t head_idx = val->m_ObjectStart.m_Idx;
       _gjMember* member = gj_allocMember( &head_idx );
@@ -1389,9 +1401,10 @@ void gjValue::removeMember( uint32_t key_crc32 )
 {
   if ( gj_isValueAlloced( idx, gen ) )
   {
-    if ( s_ValuePool[ idx ].m_Type == gjValueType::kObject )
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
-      const _gjMember* freed_elem  = gj_freeMember( &s_ValuePool[ idx ].m_ObjectStart, key_crc32 );
+      const _gjMember* freed_elem  = gj_freeMember( &val->m_ObjectStart, key_crc32 );
       if ( freed_elem != nullptr )
       {
         _gjValue* freed_value = &s_ValuePool[ freed_elem->m_Value.idx ];
@@ -1415,10 +1428,10 @@ void gjValue::clearObject()
 {
   if ( gj_isValueAlloced( idx, gen ) )
   {
-    if ( s_ValuePool[ idx ].m_Type == gjValueType::kObject )
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kObject)
     {
-      gj_freeValueData( &s_ValuePool[ idx ] );
-      _gjValue* val = &s_ValuePool[ idx ];
+      gj_freeValueData( val );
       val->m_ObjectStart.m_Idx = (uint32_t)-1;
       val->m_ObjectStart.m_Gen = (uint32_t)-1;
     }
@@ -1444,8 +1457,8 @@ gjValue gj_makeArray()
   if ( _gjValue* val = gj_allocValue( &handle_val.idx ) )
   {
     handle_val.gen = val->m_Gen;
-    val->m_Type    = gjValueType::kArray;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kArray );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
     val->m_ArrayStart.m_Gen = (uint32_t)-1;
     val->m_ArrayStart.m_Idx = (uint32_t)-1;
   }
@@ -1459,8 +1472,8 @@ gjValue gj_makeObject()
   if ( _gjValue* val = gj_allocValue( &handle_val.idx ) )
   {
     handle_val.gen = val->m_Gen;
-    val->m_Type    = gjValueType::kObject;
-    val->m_SubType = kGjSubValueTypeInvalid;
+    ASSIGN_VAL_TYPE( val, gjValueType::kObject );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
     val->m_ObjectStart.m_Gen = (uint32_t)-1;
     val->m_ObjectStart.m_Idx = (uint32_t)-1;
   }
@@ -1584,7 +1597,7 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
   if ( gj_isValueAlloced( val_handle.idx, val_handle.gen ) )
   {
     _gjValue* val = &s_ValuePool[ val_handle.idx ];
-    switch ( val->m_Type )
+    switch ( VAL_TYPE( val ) )
     {
     case gjValueType::kNull:
     {
@@ -1652,7 +1665,7 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
     }
     case gjValueType::kNumber:
     {
-      switch ( val->m_SubType )
+      switch ( VAL_SUBTYPE( val ) )
       {
         case kGjSubValueTypeInt:
         {
@@ -1716,7 +1729,7 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
   if ( gj_isValueAlloced( val_handle.idx, val_handle.gen ) )
   {
     _gjValue* val = &s_ValuePool[ val_handle.idx ];
-    switch ( val->m_Type )
+    switch ( VAL_TYPE( val ) )
     {
     case gjValueType::kNull:
     {
@@ -1808,7 +1821,7 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
     }
     case gjValueType::kNumber:
     {
-      switch ( val->m_SubType )
+      switch ( VAL_SUBTYPE( val ) )
       {
         case kGjSubValueTypeInt:
         {
@@ -1876,7 +1889,7 @@ const char* gjSerializer::getString()
 }
 
 //---------------------------------------------------------------------------------
-enum _gjLexSymType : uint32_t
+enum _gjLexSymType : uint16_t
 {
   kSymOpenBrace,
   kSymClosedBrace,
@@ -1898,8 +1911,8 @@ enum _gjLexSymType : uint32_t
 struct _gjLexSym
 {
   const char*    m_Str;
+  uint16_t       m_StrLen;
   _gjLexSymType  m_Type;
-  uint32_t       m_StrLen;
 };
 
 //---------------------------------------------------------------------------------
@@ -2080,7 +2093,7 @@ bool gj_lexFloat( _gjLexContext* ctx )
     {
       _gjLexSym* sym = gj_newSym( ctx );
       sym->m_Str     = ctx->m_Cursor;
-      sym->m_StrLen  = (uint32_t)(cursor - ctx->m_Cursor);
+      sym->m_StrLen  = (uint16_t)(cursor - ctx->m_Cursor);
       sym->m_Type    = kSymFloat;
       ctx->m_Cursor  = cursor;
       return true;
@@ -2102,7 +2115,7 @@ bool gj_lexInt( _gjLexContext* ctx )
     {
       _gjLexSym* sym = gj_newSym( ctx );
       sym->m_Str     = ctx->m_Cursor;
-      sym->m_StrLen  = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_StrLen  = (uint16_t)( cursor - ctx->m_Cursor );
       sym->m_Type    = kSymInt;
       ctx->m_Cursor  = cursor;
       return true;
@@ -2124,7 +2137,7 @@ bool gj_lexU64( _gjLexContext* ctx )
     {
       _gjLexSym* sym = gj_newSym( ctx );
       sym->m_Str     = ctx->m_Cursor;
-      sym->m_StrLen  = (uint32_t)( cursor - ctx->m_Cursor );
+      sym->m_StrLen  = (uint16_t)( cursor - ctx->m_Cursor );
       sym->m_Type    = kSymU64;
       ctx->m_Cursor  = cursor;
       return true;
@@ -2188,7 +2201,7 @@ struct _gjAstNodeMember
 //---------------------------------------------------------------------------------
 struct _gjAstNode
 {
-  enum NodeType
+  enum NodeType : uint16_t
   {
     kTypeObject,
     kTypeMember,
@@ -2201,7 +2214,6 @@ struct _gjAstNode
     kTypeNull
   };
 
-  NodeType m_Type;
   union
   {
     uint32_t         m_ObjectStartIdx;
@@ -2215,6 +2227,7 @@ struct _gjAstNode
   };
 
   uint32_t m_Next;
+  NodeType m_Type;
 };
 
 //---------------------------------------------------------------------------------

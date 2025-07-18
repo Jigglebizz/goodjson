@@ -162,6 +162,7 @@ struct gjAllocatorHooks
 
 //---------------------------------------------------------------------------------
 void gj_setAllocator( const gjAllocatorHooks* hooks );
+void gj_setAssertFn ( gjAssertFn assert_fn );
 
 //---------------------------------------------------------------------------------
 //
