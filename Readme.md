@@ -149,3 +149,16 @@ void printUsageStats()
 }
 
 ```
+
+## minified serialization
+
+You can also use these options to edit line-endings, indent amount, or switch to tabs instead of spaces
+
+```
+gjSerializeOptions options = gj_getDefaultSerializeOptions();
+options.mode = gjSerializeMode::kMinified;
+
+gjSerializer serializer( obj, &options );
+serializer.serialize();
+printf( "%s\n", serializer.getString() );
+```
