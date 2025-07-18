@@ -67,7 +67,7 @@ don't forget to shutdown the system at the end of your program
 gj_shutdown();
 ```
 
-# How memory works
+# memory usage
 
 Every object is stored in a backing array. Strings and key names are allocated ad-hoc.
 When you get a value from an object, a reference is always returned. If you would like to make a duplicate json structure, you can call `gjValue val = value.deepCopy()`
@@ -127,8 +127,7 @@ obj.addMember( "my_object", my_obj );
 {
   gjSerializer serializer( obj );
   serializer.serialize();
-  printf( serializer.getString() );
-  printf("\n");
+  printf( "%s\n", serializer.getString() );
 }
 
 gj_deleteValue( obj );
