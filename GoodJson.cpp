@@ -150,8 +150,8 @@ static constexpr uint32_t kMemberIdxTail = (uint32_t)-1;
 struct _gjMember
 {
   char*    m_KeyStr;
-  uint32_t m_KeyHash;
   gjValue  m_Value;
+  uint32_t m_KeyHash;
   uint32_t m_Gen;
   uint32_t m_Next;
 };
@@ -173,21 +173,19 @@ struct _gjArrayElem
 };
 
 //---------------------------------------------------------------------------------
-enum gjSubValueType : uint32_t
+enum gjSubValueType : uint8_t
 {
   kGjSubValueTypeU64,
   kGjSubValueTypeInt,
   kGjSubValueTypeFloat,
 
   kGjSubValueTypeCount,
-  kGjSubValueTypeInvalid = (uint32_t)-1
+  kGjSubValueTypeInvalid = (uint8_t)-1
 };
 
 //---------------------------------------------------------------------------------
 struct _gjValue
 {
-  gjValueType    m_Type;
-  gjSubValueType m_SubType;
   union
   {
     float           m_Float;
@@ -198,7 +196,9 @@ struct _gjValue
     _gjArrayHandle  m_ArrayStart;
     _gjMemberHandle m_ObjectStart;
   };
-  uint32_t    m_Gen;
+  uint32_t       m_Gen;
+  gjValueType    m_Type;
+  gjSubValueType m_SubType;
 };
 
 //---------------------------------------------------------------------------------
@@ -589,6 +589,7 @@ void gj_freeValueData( _gjValue* val )
       {
         gj_freeValueData( &s_ValuePool[ member->m_Value.idx ] );
         gj_freeValue    ( member->m_Value.idx );
+        gj_free( member->m_KeyStr );
       }
 
       while ( member->m_Next != kMemberIdxTail )
@@ -598,6 +599,7 @@ void gj_freeValueData( _gjValue* val )
         {
           gj_freeValueData( &s_ValuePool[ member->m_Value.idx ] );
           gj_freeValue    ( member->m_Value.idx );
+          gj_free( member->m_KeyStr );
         }
       }
     }

@@ -21,7 +21,7 @@ void gj_shutdown();
 static constexpr uint32_t kArrayIndexEnd = (uint32_t)-1;
 
 //---------------------------------------------------------------------------------
-enum class gjValueType : uint32_t
+enum class gjValueType : uint8_t
 {
   kNull,
   kObject,
@@ -31,7 +31,7 @@ enum class gjValueType : uint32_t
   kBool,
 
   kCount,
-  kInvalid = (uint32_t)-1
+  kInvalid = (uint8_t)-1
 };
 
 //---------------------------------------------------------------------------------
