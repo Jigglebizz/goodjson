@@ -70,9 +70,10 @@ gj_shutdown();
 # memory usage
 
 Every object is stored in a backing array. Strings and key names are allocated ad-hoc.
-When you get a value from an object, a reference is always returned. If you would like to make a duplicate json structure, you can call `gjValue val = value.deepCopy()`
+When you get a value from an object, a reference is returned, rather than a copy/value.
+If you would like to make a duplicate json structure, you can call `gjValue val = value.deepCopy()`
 
-You can keep an eye on your usage of the backing array by calling
+You can keep an eye on your usage of the backing resources by calling
 
 ```
 gjUsageStats stats = gj_getUsageStats();
@@ -86,7 +87,7 @@ the `gjSerializer` is the only object that utilizes RAII semantics in the librar
 # custom allocators
 
 If you would like to use your own allocator, it is very simple.
-Please do so before calling `gj_init()`. To do so, simply do the following:
+You must do this before calling `gj_init()`. To do so, simply do the following:
 
 ```
 gjAllocatorHooks alloc_hooks;
