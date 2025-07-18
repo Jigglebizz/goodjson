@@ -1,5 +1,4 @@
-# goodjson
-## is a JSON parser/serializer built with a focus on memory efficiency and performance
+# goodjson is a JSON parser/serializer built with a focus on memory efficiency and performance
 
 The goal of goodjson is to offer predictable memory usage for use cases where memory is under tight control
 
@@ -81,7 +80,7 @@ gjUsageStats stats = gj_getUsageStats();
 
 A call to `gj_parse()` will temporarily allocate a big chunk of memory for the lexer symbols and AST. The amount allocated depends on the size of your input string. When gj_parse is done, it frees this memory
 
-the `gjSerializer` is the only object that utilizes construction-destruction symantics in the library. The serializer will temporarily allocate string data that can be read using `serializer.getString()`. Once the object goes out of scope, the backing string data is freed.
+the `gjSerializer` is the only object that utilizes RAII semantics in the library. The serializer will temporarily allocate string data that can be read using `serializer.getString()`. Once the object goes out of scope, the backing string data is freed.
 
 
 # custom allocators
