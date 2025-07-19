@@ -71,6 +71,8 @@ struct gjValue
   gjValue&    operator=( const char* v );
   gjValue&    operator=( bool v );
 
+  gjValue     makeDeepCopy  () const;
+
   // This is for arrays, not objects
   uint32_t    getElementCount() const;
   gjValue     getElement     ( uint32_t elem_idx ) const;
@@ -90,8 +92,6 @@ struct gjValue
   void        removeMember  ( const char* key       );
   void        removeMember  ( uint32_t    key_crc32 );
   void        clearObject   ();
-
-  gjValue     makeDeepCopy  ();
 };
 
 //---------------------------------------------------------------------------------

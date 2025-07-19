@@ -1024,6 +1024,134 @@ gjValue& gjValue::operator=( bool v )
 
 //---------------------------------------------------------------------------------
 //
+// Make Deep Copy
+//
+//---------------------------------------------------------------------------------
+gjValue gjValue::makeDeepCopy() const
+{
+  gjValue copy_val;
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    const _gjValue* val = &s_ValuePool[ idx ];
+    if ( _gjValue* val_copy = gj_allocValue( &copy_val.idx ) )
+    {
+      copy_val.gen = val_copy->m_Gen;
+
+      val_copy->m_TypeGroup = val->m_TypeGroup;
+      switch ( VAL_TYPE( val ) )
+      {
+      case gjValueType::kBool:
+      {
+        val_copy->m_Bool = val->m_Bool;
+      }
+      break;
+      case gjValueType::kString:
+      {
+        size_t sz = gj_StrLen( val->m_Str ) + 1;
+        val_copy->m_Str = (char*)gj_malloc( sz, "string value" );
+        memcpy( val_copy->m_Str, val->m_Str, sz );
+      }
+      break;
+      case gjValueType::kNumber:
+      {
+        switch ( VAL_SUBTYPE( val ) )
+        {
+          case kGjSubValueTypeInt:
+          {
+            val_copy->m_Int = val->m_Int;
+          }
+          break;
+          case kGjSubValueTypeU64:
+          {
+            val_copy->m_U64 = val->m_U64;
+          }
+          break;
+          case kGjSubValueTypeFloat:
+          {
+            val_copy->m_Float = val->m_Float;
+          }
+          break;
+        }
+      }
+      break;
+      case gjValueType::kArray:
+      {
+        val_copy->m_ArrayStart.m_Idx = kArrayIdxTail;
+        const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
+        if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
+        {
+          if ( arr_handle_start.m_Idx != kArrayIdxTail )
+          {
+            const _gjArrayElem* elem = &s_ArrayPool[ arr_handle_start.m_Idx ];
+
+            _gjArrayElem* new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+            val_copy->m_ArrayStart.m_Gen = new_elem->m_Gen;
+
+            new_elem->m_Value = elem->m_Value.makeDeepCopy();
+
+            while ( elem->m_Next != kArrayIdxTail )
+            {
+              elem = &s_ArrayPool[ elem->m_Next ];
+              _gjArrayElem* new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+              new_elem->m_Value = elem->m_Value.makeDeepCopy();
+            }
+          }
+        }
+        break;
+        case gjValueType::kObject:
+        {
+          val_copy->m_ObjectStart.m_Idx = kMemberIdxTail;
+          val_copy->m_ObjectStart.m_Gen = (uint32_t)-1;
+
+          const _gjMemberHandle member_handle_start = val->m_ObjectStart;
+          if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
+          {
+            if ( member_handle_start.m_Idx != kMemberIdxTail )
+            {
+              const _gjMember* member = &s_MemberPool[ member_handle_start.m_Idx ];
+
+              _gjMember* new_member   = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
+              val_copy->m_ObjectStart.m_Gen = new_member->m_Gen;
+
+              {
+                new_member->m_KeyHash = member->m_KeyHash;
+                new_member->m_Value   = member->m_Value.makeDeepCopy();
+                const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
+                new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
+                memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
+              }
+
+              while ( member->m_Next != kMemberIdxTail )
+              {
+                member = &s_MemberPool[ member->m_Next ];
+
+                new_member            = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
+
+                new_member->m_KeyHash = member->m_KeyHash;
+                new_member->m_Value   = member->m_Value.makeDeepCopy();
+                const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
+                new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
+                memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
+              }
+            }
+          }
+        }
+        break;
+      }
+      break;
+      }
+    }
+    else
+    {
+      gj_assert( "backing data is not large enough to make deep copy" );
+    }
+  }
+
+  return copy_val;
+}
+
+//---------------------------------------------------------------------------------
+//
 // Array operations
 //
 //---------------------------------------------------------------------------------
@@ -1079,14 +1207,17 @@ gjValue gjValue::getElement( uint32_t elem_idx ) const
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
       {
         uint32_t cur_idx = arr_handle_start.m_Idx;
-        const _gjArrayElem* elem = &s_ArrayPool[ cur_idx ];
-        while ( cur_idx != elem_idx )
+        if ( cur_idx != kArrayIdxTail )
         {
-          cur_idx = elem->m_Next;
-          elem = &s_ArrayPool[ cur_idx ];
+          const _gjArrayElem* elem = &s_ArrayPool[ cur_idx ];
+          while ( cur_idx != elem_idx && cur_idx != kArrayIdxTail )
+          {
+            cur_idx = elem->m_Next;
+            elem = &s_ArrayPool[ cur_idx ];
+          }
+          return cur_idx == kArrayIdxTail ? gjValue() : elem->m_Value;
         }
-
-        return elem->m_Value;
+        return gjValue();
       }
       else
       {
