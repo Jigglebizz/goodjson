@@ -1206,16 +1206,16 @@ gjValue gjValue::getElement( uint32_t elem_idx ) const
       const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
       {
-        uint32_t cur_idx = arr_handle_start.m_Idx;
-        if ( cur_idx != kArrayIdxTail )
+        if ( arr_handle_start.m_Idx != kArrayIdxTail )
         {
-          const _gjArrayElem* elem = &s_ArrayPool[ cur_idx ];
-          while ( cur_idx != elem_idx && cur_idx != kArrayIdxTail )
+          uint32_t cur_idx = 0;
+          const _gjArrayElem* elem = &s_ArrayPool[ arr_handle_start.m_Idx ];
+          while ( cur_idx != elem_idx && elem->m_Next != kArrayIdxTail )
           {
-            cur_idx = elem->m_Next;
-            elem = &s_ArrayPool[ cur_idx ];
+            cur_idx++;
+            elem = &s_ArrayPool[ elem->m_Next ];
           }
-          return cur_idx == kArrayIdxTail ? gjValue() : elem->m_Value;
+          return cur_idx != elem_idx ? gjValue() : elem->m_Value;
         }
         return gjValue();
       }
