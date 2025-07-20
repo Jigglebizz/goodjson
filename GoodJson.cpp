@@ -569,6 +569,11 @@ void gj_freeValueData( _gjValue* val )
   else if ( VAL_TYPE( val ) == gjValueType::kArray )
   {
     _gjArrayHandle arr_start_handle = val->m_ArrayStart;
+    if ( val->m_ArrayStart.m_Idx == kArrayIdxTail )
+    {
+      return;
+    }
+
     _gjArrayElem*  elem = &s_ArrayPool[ arr_start_handle.m_Idx ];
 
     if ( elem->m_Gen == arr_start_handle.m_Gen )
@@ -1773,7 +1778,15 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
     }
     case gjValueType::kArray:
     {
-      size_t sz = 1 + newline_len; // [
+      size_t sz = 1; // [
+
+      if ( val->m_ArrayStart.m_Idx == kArrayIdxTail )
+      {
+        sz += 1; // ]
+        return sz;
+      }
+
+      sz += newline_len;
 
       _gjArrayElem* elem = &s_ArrayPool[ val->m_ArrayStart.m_Idx ];
       if ( elem->m_Gen == val->m_ArrayStart.m_Gen )
@@ -1922,7 +1935,13 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
     }
     case gjValueType::kArray:
     {
-      cursor = gj_addChars( cursor, "[",         1           );
+      cursor = gj_addChars( cursor, "[", 1 );
+      if ( val->m_ArrayStart.m_Idx == kArrayIdxTail )
+      {
+        cursor = gj_addChars( cursor, "]", 1 );
+        return cursor;
+      }
+
       cursor = gj_addChars( cursor, newline_str, newline_len );
 
       _gjArrayElem* elem = &s_ArrayPool[ val->m_ArrayStart.m_Idx ];
@@ -2192,7 +2211,7 @@ bool gj_lexString( _gjLexContext* ctx )
     sym->m_Type    = kSymString;
     ctx->m_Cursor++;
 
-    while ( *ctx->m_Cursor != '"' && *(ctx->m_Cursor - 1) != '\\' )
+    while ( *ctx->m_Cursor != '"' || *(ctx->m_Cursor - 1) == '\\' )
     {
       sym->m_StrLen++;
       ctx->m_Cursor++;
@@ -2593,6 +2612,10 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
 
           sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
         }
+      }
+      else if ( sym->m_Type == kSymClosedBracket )
+      {
+        lex->m_ReadIdx++;
       }
 
       if ( sym->m_Type != kSymClosedBracket )
