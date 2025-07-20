@@ -569,7 +569,7 @@ void gj_freeValueData( _gjValue* val )
   else if ( VAL_TYPE( val ) == gjValueType::kArray )
   {
     _gjArrayHandle arr_start_handle = val->m_ArrayStart;
-    if ( val->m_ArrayStart.m_Idx == kArrayIdxTail )
+    if ( arr_start_handle.m_Idx == kArrayIdxTail )
     {
       return;
     }
@@ -600,6 +600,11 @@ void gj_freeValueData( _gjValue* val )
   else if ( VAL_TYPE( val ) == gjValueType::kObject )
   {
     _gjMemberHandle obj_start_handle = val->m_ObjectStart;
+    if ( obj_start_handle.m_Idx == kMemberIdxTail )
+    {
+      return;
+    }
+
     _gjMember*      member = &s_MemberPool[ obj_start_handle.m_Idx ];
 
     if ( member->m_Gen == obj_start_handle.m_Gen )
@@ -1111,35 +1116,38 @@ gjValue gjValue::makeDeepCopy() const
           val_copy->m_ObjectStart.m_Idx = kMemberIdxTail;
           val_copy->m_ObjectStart.m_Gen = (uint32_t)-1;
 
-          const _gjMemberHandle member_handle_start = val->m_ObjectStart;
-          if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
+          if ( val->m_ObjectStart.m_Idx != kMemberIdxTail )
           {
-            if ( member_handle_start.m_Idx != kMemberIdxTail )
+            const _gjMemberHandle member_handle_start = val->m_ObjectStart;
+            if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
             {
-              const _gjMember* member = &s_MemberPool[ member_handle_start.m_Idx ];
-
-              _gjMember* new_member   = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
-              val_copy->m_ObjectStart.m_Gen = new_member->m_Gen;
-
+              if ( member_handle_start.m_Idx != kMemberIdxTail )
               {
-                new_member->m_KeyHash = member->m_KeyHash;
-                new_member->m_Value   = member->m_Value.makeDeepCopy();
-                const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
-                new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
-                memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
-              }
+                const _gjMember* member = &s_MemberPool[ member_handle_start.m_Idx ];
 
-              while ( member->m_Next != kMemberIdxTail )
-              {
-                member = &s_MemberPool[ member->m_Next ];
+                _gjMember* new_member   = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
+                val_copy->m_ObjectStart.m_Gen = new_member->m_Gen;
 
-                new_member            = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
+                {
+                  new_member->m_KeyHash = member->m_KeyHash;
+                  new_member->m_Value   = member->m_Value.makeDeepCopy();
+                  const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
+                  new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
+                  memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
+                }
 
-                new_member->m_KeyHash = member->m_KeyHash;
-                new_member->m_Value   = member->m_Value.makeDeepCopy();
-                const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
-                new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
-                memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
+                while ( member->m_Next != kMemberIdxTail )
+                {
+                  member = &s_MemberPool[ member->m_Next ];
+
+                  new_member            = gj_allocMember( &val_copy->m_ObjectStart.m_Idx );
+
+                  new_member->m_KeyHash = member->m_KeyHash;
+                  new_member->m_Value   = member->m_Value.makeDeepCopy();
+                  const size_t str_len  = gj_StrLen( member->m_KeyStr ) + 1;
+                  new_member->m_KeyStr  = (char*)gj_malloc( str_len, "Object Member Key" );
+                  memcpy( new_member->m_KeyStr, member->m_KeyStr, str_len );
+                }
               }
             }
           }
