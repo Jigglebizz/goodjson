@@ -1417,28 +1417,35 @@ gjValue gjValue::getMember( uint32_t key_crc32 ) const
     if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle member_handle_start = val->m_ObjectStart;
-      if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
+      if ( member_handle_start.m_Idx != kMemberIdxTail )
       {
-        uint32_t cur_idx = member_handle_start.m_Idx;
-        const _gjMember* member = &s_MemberPool[ cur_idx ];
-        while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
+        if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
         {
-          cur_idx = member->m_Next;
-          member = &s_MemberPool[ cur_idx ];
-        }
+          uint32_t cur_idx = member_handle_start.m_Idx;
+          const _gjMember* member = &s_MemberPool[ cur_idx ];
+          while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
+          {
+            cur_idx = member->m_Next;
+            member = &s_MemberPool[ cur_idx ];
+          }
 
-        if ( member->m_KeyHash == key_crc32 )
-        {
-          return member->m_Value;
+          if ( member->m_KeyHash == key_crc32 )
+          {
+            return member->m_Value;
+          }
+          else
+          {
+            gj_assert( "Attempting to get member that does not exist in object" );
+          }
         }
         else
         {
-          gj_assert( "Attempting to get member that does not exist in object" );
+          gj_assert( "Attempting to get member for an object that has been freed" );
         }
       }
       else
       {
-        gj_assert( "Attempting to get member for an object that has been freed" );
+        gj_assert( "Attempting to get member in an empty object" );
       }
     }
     else
