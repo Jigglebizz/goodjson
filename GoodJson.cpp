@@ -1469,6 +1469,11 @@ bool gjValue::hasMember( uint32_t key_crc32 ) const
     if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle member_handle_start = val->m_ObjectStart;
+      if ( member_handle_start.m_Idx == kMemberIdxTail )
+      {
+        return false;
+      }
+
       if ( member_handle_start.m_Gen == s_MemberPool[ member_handle_start.m_Idx ].m_Gen )
       {
         uint32_t cur_idx = member_handle_start.m_Idx;
