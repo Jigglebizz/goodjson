@@ -486,15 +486,18 @@ _gjMember* gj_freeMember( _gjMemberHandle* inout_head_handle, uint32_t key_crc32
       }
       else
       {
+        _gjMember* prev_member = member;
         while ( member->m_KeyHash != key_crc32 && member->m_Next != kMemberIdxTail )
         {
+          prev_member = member;
           member = &s_MemberPool[ member->m_Next ];
         }
 
         if ( member->m_KeyHash == key_crc32 )
         {
-          const uint32_t free_idx = member->m_Next;
-          member->m_Next = s_MemberPool[ member->m_Next ].m_Next;
+          const uint32_t free_idx = prev_member->m_Next;
+          prev_member->m_Next = member->m_Next;
+
           s_MemberPool[ free_idx ].m_Next = s_MemberPoolHead;
           s_MemberPool[ free_idx ].m_Gen++;
           s_MemberPoolHead = free_idx;
@@ -664,7 +667,7 @@ gjValue::gjValue( float v )
   {
     gen = val->m_Gen;
     ASSIGN_VAL_TYPE( val, gjValueType::kNumber );
-    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeInvalid );
+    ASSIGN_VAL_SUBTYPE( val, kGjSubValueTypeFloat );
     val->m_Float   = v;
   }
 }
@@ -1092,7 +1095,7 @@ gjValue gjValue::makeDeepCopy() const
             while ( elem->m_Next != kArrayIdxTail )
             {
               elem = &s_ArrayPool[ elem->m_Next ];
-              _gjArrayElem* new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+              new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
               new_elem->m_Value = elem->m_Value.makeDeepCopy();
             }
           }
