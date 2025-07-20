@@ -1752,6 +1752,25 @@ constexpr size_t kNewlineLens[] = {
 static_assert( sizeof( kNewlineLens ) / sizeof( *kNewlineLens ) == (size_t)gjNewlineStyle::kCount, "The must stay in sync" );
 
 //---------------------------------------------------------------------------------
+size_t gj_getJsonSizeforCString( const char* cstring )
+{
+  size_t sz = 0;
+  for ( uint32_t i_char = 0; cstring[ i_char ] != '\0'; ++i_char, ++sz )
+  {
+    sz += cstring[i_char + 1] == '\r'
+       || cstring[i_char + 1] == '\n'
+       || cstring[i_char + 1] == '\t'
+       || cstring[i_char + 1] == '\b'
+       || cstring[i_char + 1] == '\f'
+       || cstring[i_char + 1] == '\\'
+       || cstring[i_char + 1] == '/'
+       || cstring[i_char + 1] == '"';
+  }
+
+  return sz;
+}
+
+//---------------------------------------------------------------------------------
 size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* options, size_t indent_amt = 0 )
 {
   const size_t newline_len    = options->mode == gjSerializeMode::kPretty ? kNewlineLens[ (uint32_t)options->newline_style ] : 0;
@@ -1778,13 +1797,13 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
         {
           while ( member->m_Next != kMemberIdxTail )
           {
-            sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+            sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_getJsonSizeforCString( member->m_KeyStr ); // "<key>" : 
             sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
             sz += 1 + newline_len; // ,
 
             member = &s_MemberPool[ member->m_Next ];
           }
-          sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_StrLen( member->m_KeyStr ); // "<key>" : 
+          sz += local_indent_amt + (options->mode == gjSerializeMode::kMinified ? 3 : 5) + gj_getJsonSizeforCString( member->m_KeyStr ); // "<key>" : 
           sz += gj_getRequiredSerializedSize( member->m_Value, options, local_indent_amt );
           sz += newline_len;
         }
@@ -1832,7 +1851,7 @@ size_t gj_getRequiredSerializedSize( gjValue val_handle, gjSerializeOptions* opt
     }
     case gjValueType::kString:
     {
-      return 2 + gj_StrLen( val->m_Str ); // "<string>"
+      return 2 + gj_getJsonSizeforCString( val->m_Str ); // "<string>"
     }
     case gjValueType::kNumber:
     {
@@ -1890,6 +1909,60 @@ char* gj_addChars( char* cursor, const char* src, size_t len )
 }
 
 //---------------------------------------------------------------------------------
+char* gj_addCString( char* cursor, const char* src, size_t src_len )
+{
+  uint32_t offset = 0;
+  for ( uint32_t i_char = 0; i_char < src_len; ++i_char )
+  {
+    switch( src[ i_char ] )
+    {
+    case '\\':
+    case '/':
+    case '"':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = src[ i_char ];
+    }
+    break;
+    case '\n':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = 'n';
+    }
+    break;
+    case '\r':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = 'r';
+    }
+    break;
+    case '\b':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = 'b';
+    }
+    break;
+    case '\f':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = 'f';
+    }
+    break;
+    case '\t':
+    {
+      cursor[ i_char + offset++ ] = '\\';
+      cursor[ i_char + offset   ] = 't';
+    }
+    break;
+    default:
+      cursor[ i_char + offset ] =  src[ i_char ];
+    }
+  }
+
+  return cursor + src_len - offset;
+}
+
+//---------------------------------------------------------------------------------
 char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* options, size_t indent_amt = 0 )
 {
   const char*  newline_str    = options->mode == gjSerializeMode::kPretty ? kNewlineStrings[ (uint32_t)options->newline_style ] : "";
@@ -1920,27 +1993,27 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
         {
           while ( member->m_Next != kMemberIdxTail )
           {
-            cursor = gj_addIndent( cursor, local_indent_amt, using_tabs                    );
-            cursor = gj_addChars ( cursor, "\"",             1                             );
-            cursor = gj_addChars ( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
-            cursor = gj_addChars ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
-                                           options->mode == gjSerializeMode::kMinified ? 2     : 4 );
+            cursor = gj_addIndent ( cursor, local_indent_amt, using_tabs                    );
+            cursor = gj_addChars  ( cursor, "\"",             1                             );
+            cursor = gj_addCString( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
+            cursor = gj_addChars  ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
+                                            options->mode == gjSerializeMode::kMinified ? 2     : 4 );
 
-            cursor = gj_serialize( cursor, member->m_Value, options, local_indent_amt );
-            cursor = gj_addChars ( cursor, ",",              1           );
-            cursor = gj_addChars ( cursor, newline_str,      newline_len );
+            cursor = gj_serialize ( cursor, member->m_Value, options, local_indent_amt );
+            cursor = gj_addChars  ( cursor, ",",              1           );
+            cursor = gj_addChars  ( cursor, newline_str,      newline_len );
 
             member = &s_MemberPool[ member->m_Next ];
           }
 
-          cursor = gj_addIndent( cursor, local_indent_amt, using_tabs                    );
-          cursor = gj_addChars ( cursor, "\"",             1                             );
-          cursor = gj_addChars ( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
-          cursor = gj_addChars ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
-                                         options->mode == gjSerializeMode::kMinified ? 2     : 4 );
+          cursor = gj_addIndent ( cursor, local_indent_amt, using_tabs                    );
+          cursor = gj_addChars  ( cursor, "\"",             1                             );
+          cursor = gj_addCString( cursor, member->m_KeyStr, gj_StrLen( member->m_KeyStr ) );
+          cursor = gj_addChars  ( cursor, options->mode == gjSerializeMode::kMinified ? "\":" : "\" : ", 
+                                          options->mode == gjSerializeMode::kMinified ? 2     : 4 );
 
-          cursor = gj_serialize( cursor, member->m_Value, options, local_indent_amt );
-          cursor = gj_addChars ( cursor, newline_str,      newline_len );
+          cursor = gj_serialize ( cursor, member->m_Value, options, local_indent_amt );
+          cursor = gj_addChars  ( cursor, newline_str,      newline_len );
         }
         else
         {
@@ -1993,9 +2066,9 @@ char* gj_serialize( char* cursor, gjValue val_handle, gjSerializeOptions* option
     }
     case gjValueType::kString:
     {
-      cursor = gj_addChars( cursor, "\"", 1 );
-      cursor = gj_addChars( cursor, val->m_Str, gj_StrLen( val->m_Str ) );
-      cursor = gj_addChars( cursor, "\"", 1 );
+      cursor = gj_addChars  ( cursor, "\"", 1 );
+      cursor = gj_addCString( cursor, val->m_Str, gj_StrLen( val->m_Str ) );
+      cursor = gj_addChars  ( cursor, "\"", 1 );
       return cursor;
     }
     case gjValueType::kNumber:
@@ -2499,6 +2572,80 @@ bool gj_isSymValueType( _gjLexSymType type )
 }
 
 //---------------------------------------------------------------------------------
+uint32_t gj_cStringLen( const char* json_str, uint32_t json_len )
+{
+  uint32_t collapse_amt = 0;
+  for ( uint32_t i_char = 0; i_char < json_len; ++i_char )
+  {
+    collapse_amt += json_str[ i_char + collapse_amt ] == '\\';
+  }
+
+  return json_len - collapse_amt;
+}
+
+//---------------------------------------------------------------------------------
+// returns 0 for ok
+uint32_t gj_jsonToCString( char* c_string, uint32_t c_string_len, const char* json_str )
+{
+  // todo: vectorizable?
+  uint32_t offset_amt = 0;
+  for ( uint32_t i_char = 0; i_char < c_string_len + 1; ++i_char )
+  {
+    const uint32_t i_char_src = i_char + offset_amt;
+    if (json_str[ i_char_src ] == '\\' )
+    {
+      offset_amt++;
+      switch (json_str[ i_char_src + 1 ] )
+      {
+        case '"': // These just grab the next char
+        case '\\':
+        case '/':
+        {
+          c_string[ i_char ] = json_str[ i_char_src + 1 ];
+        }
+        break;
+        case 'n':
+        {
+          c_string[ i_char ] = '\n';
+        }
+        break;
+        case 'r':
+        {
+          c_string[ i_char ] = '\r';
+        }
+        break;
+        case 't':
+        {
+          c_string[ i_char ] = '\t';
+        }
+        break;
+        case 'b':
+        {
+          c_string[ i_char ] = '\b';
+        }
+        break;
+        case 'f':
+        {
+          c_string[ i_char ] = '\f';
+        }
+        break;
+        default:
+        {
+          gj_assert( "error parsing string literal: unrecognized escape sequence" );
+          return (uint32_t)-1;
+        }
+      }
+    }
+    else
+    {
+      c_string[ i_char ] = json_str[ i_char_src ];
+    }
+  } 
+
+  return 0;
+}
+
+//---------------------------------------------------------------------------------
 // returns index into ast node array
 uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
 {
@@ -2546,9 +2693,20 @@ uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
       uint32_t idx;
       _gjAstNode* node = gj_allocAstNode( ast, &idx );
       node->m_Type   = _gjAstNode::kTypeString;
-      node->m_String = (char*)gj_malloc( sym->m_StrLen + 1, "AST string value" );
-      memcpy( node->m_String, sym->m_Str, sym->m_StrLen );
-      node->m_String[ sym->m_StrLen ] = '\0';
+
+      
+      const uint32_t c_string_len = gj_cStringLen( sym->m_Str, sym->m_StrLen );
+
+      node->m_String = (char*)gj_malloc( c_string_len + 1, "AST string value" );
+
+      if ( gj_jsonToCString( node->m_String, c_string_len, sym->m_Str ) != 0 )
+      {
+        gj_free( node->m_String );
+        return (uint32_t)-1;
+      }
+
+      node->m_String[ c_string_len ] = '\0';
+
       return idx;
     }
     break;
