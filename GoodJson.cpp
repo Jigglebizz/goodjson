@@ -1166,6 +1166,10 @@ uint32_t gjValue::getElementCount() const
     if ( VAL_TYPE( val ) == gjValueType::kArray )
     {
       const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
+      if ( arr_handle_start.m_Idx == kArrayIdxTail )
+      {
+        return 0;
+      }
       if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
       {
         uint32_t count = 0;
