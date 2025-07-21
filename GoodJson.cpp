@@ -888,7 +888,7 @@ bool gjValue::getBool() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( VAL_TYPE( val ) == gjValueType::kString )
+    if ( VAL_TYPE( val ) == gjValueType::kBool )
     {
       return val->m_Bool;
     }
@@ -1364,6 +1364,11 @@ uint32_t gjValue::getMemberCount() const
     if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle obj_handle_start = val->m_ObjectStart;
+      if ( obj_handle_start.m_Idx == kMemberIdxTail )
+      {
+        return 0;
+      }
+
       if ( obj_handle_start.m_Gen == s_MemberPool[ obj_handle_start.m_Idx ].m_Gen )
       {
         uint32_t count = 0;
@@ -1608,6 +1613,75 @@ void gjValue::clearObject()
     gj_assert( "Attempting to clear array on a value that has been freed" );
   }
 }
+
+//---------------------------------------------------------------------------------
+gjMembers gjValue::members()
+{
+  gjMembers members;
+  members.value = *this;
+  return members;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::iterator gjMembers::begin()
+{
+  iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  if ( gj_isValueAlloced( value.idx, value.gen ) )
+  {
+    it.idx = s_ValuePool[ value.idx ].m_ObjectStart.m_Idx;
+    it.gen = s_ValuePool[ value.idx ].m_ObjectStart.m_Gen;
+  }
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::iterator gjMembers::end()
+{
+  iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjObjectMember gjMemberIterator::operator*()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen )
+  {
+    _gjMember* member = &s_MemberPool[ idx ];
+    return { member->m_KeyStr, member->m_Value };
+  }
+
+  return { nullptr, gjValue() };
+}
+
+//---------------------------------------------------------------------------------
+bool gjMemberIterator::operator==( const gjMemberIterator& other ) const
+{
+  return idx == other.idx && gen == other.gen;
+}
+
+//---------------------------------------------------------------------------------
+gjMemberIterator& gjMemberIterator::operator++()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen && s_MemberPool[ idx ].m_Next != kMemberIdxTail )
+  {
+    _gjMember* next = &s_MemberPool[ s_MemberPool[ idx ].m_Next ];
+    idx = s_MemberPool[ idx ].m_Next;
+    gen = next->m_Gen;
+  }
+  else
+  {
+    idx = kMemberIdxTail;
+    gen = (uint32_t)-1;
+  }
+
+  return *this;
+}
+
+
 
 //---------------------------------------------------------------------------------
 //

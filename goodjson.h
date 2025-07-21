@@ -35,6 +35,22 @@ enum class gjValueType : uint8_t
 };
 
 //---------------------------------------------------------------------------------
+struct gjObjectMember;
+
+//---------------------------------------------------------------------------------
+class gjMemberIterator
+{
+friend class gjMembers;
+public:
+  gjObjectMember    operator* ();
+  gjMemberIterator& operator++();
+  bool              operator==( const gjMemberIterator& other ) const;
+private:
+  uint32_t idx;
+  uint32_t gen;
+};
+
+//---------------------------------------------------------------------------------
 struct gjValue
 {
   uint32_t idx; // Do not edit these
@@ -92,6 +108,8 @@ struct gjValue
   void        removeMember  ( const char* key       );
   void        removeMember  ( uint32_t    key_crc32 );
   void        clearObject   ();
+
+  gjMembers   members       ();
 };
 
 //---------------------------------------------------------------------------------
@@ -99,6 +117,26 @@ gjValue     gj_parse        ( const char* json_string, size_t string_len );
 gjValue     gj_makeArray    ();
 gjValue     gj_makeObject   ();
 void        gj_deleteValue  ( gjValue val );
+
+//---------------------------------------------------------------------------------
+class gjMembers
+{
+friend struct gjValue;
+public:
+  using iterator = gjMemberIterator;
+
+  iterator begin();
+  iterator end  ();
+private:
+  gjValue value;
+};
+
+//---------------------------------------------------------------------------------
+struct gjObjectMember
+{
+  const char* key;
+  gjValue     value;
+};
 
 //---------------------------------------------------------------------------------
 enum class gjSerializeMode : uint32_t
