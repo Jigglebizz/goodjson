@@ -51,6 +51,19 @@ private:
 };
 
 //---------------------------------------------------------------------------------
+class gjConstMemberIterator
+{
+friend class gjMembers;
+public:
+  const gjObjectMember   operator* ();
+  gjConstMemberIterator& operator++();
+  bool                   operator==( const gjConstMemberIterator& other ) const;
+private:
+  uint32_t idx;
+  uint32_t gen;
+};
+
+//---------------------------------------------------------------------------------
 struct gjValue
 {
   uint32_t idx; // Do not edit these
@@ -63,53 +76,56 @@ struct gjValue
   explicit gjValue( bool v );
   explicit gjValue( const char* v );
 
-  gjValue operator[]( uint32_t idx ) const;
-  gjValue operator[]( const char* key ) const;
+  gjValue         operator[]    ( uint32_t idx ) const;
+  gjValue         operator[]    ( const char* key ) const;
 
-  gjValueType getType  () const;
-
-  int         getInt   () const;
-  uint64_t    getU64   () const;
-  float       getFloat () const;
-  const char* getString() const;
-  bool        getBool  () const;
-
-  void        setInt   ( int v );
-  void        setU64   ( uint64_t v );
-  void        setFloat ( float v );
-  void        setString( const char* str );
-  void        setBool  ( bool v );
-  void        setNull  ();
-
-  gjValue&    operator=( int v );
-  gjValue&    operator=( uint64_t v );
-  gjValue&    operator=( float v );
-  gjValue&    operator=( const char* v );
-  gjValue&    operator=( bool v );
-
-  gjValue     makeDeepCopy  () const;
+  gjValueType     getType       () const;
+                                
+  int             getInt        () const;
+  uint64_t        getU64        () const;
+  float           getFloat      () const;
+  const char*     getString     () const;
+  bool            getBool       () const;
+                                
+  void            setInt        ( int v );
+  void            setU64        ( uint64_t v );
+  void            setFloat      ( float v );
+  void            setString     ( const char* str );
+  void            setBool       ( bool v );
+  void            setNull       ();
+                                
+  gjValue&        operator=     ( int v );
+  gjValue&        operator=     ( uint64_t v );
+  gjValue&        operator=     ( float v );
+  gjValue&        operator=     ( const char* v );
+  gjValue&        operator=     ( bool v );
+                  
+  gjValue         makeDeepCopy  () const;
 
   // This is for arrays, not objects
-  uint32_t    getElementCount() const;
-  gjValue     getElement     ( uint32_t elem_idx ) const;
-
-  void        insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
-  void        removeElement  ( uint32_t remove_idx );
-  void        clearArray     ();
+  uint32_t        getElementCount() const;
+  gjValue         getElement     ( uint32_t elem_idx ) const;
+                  
+  void            insertElement  ( gjValue val, uint32_t insert_idx = kArrayIndexEnd );
+  void            removeElement  ( uint32_t remove_idx );
+  void            clearArray     ();
   
   // This is for objects, not arrays
-  uint32_t    getMemberCount() const;
-  gjValue     getMember     ( const char* key       ) const;
-  gjValue     getMember     ( uint32_t    key_crc32 ) const;
-  bool        hasMember     ( const char* key       ) const;
-  bool        hasMember     ( uint32_t    key_crc32 ) const;
+  uint32_t        getMemberCount() const;
+  gjValue         getMember     ( const char* key       ) const;
+  gjValue         getMember     ( uint32_t    key_crc32 ) const;
+  bool            hasMember     ( const char* key       ) const;
+  bool            hasMember     ( uint32_t    key_crc32 ) const;
+                  
+  void            addMember     ( const char* key, gjValue value );
+  void            removeMember  ( const char* key       );
+  void            removeMember  ( uint32_t    key_crc32 );
+  void            clearObject   ();
 
-  void        addMember     ( const char* key, gjValue value );
-  void        removeMember  ( const char* key       );
-  void        removeMember  ( uint32_t    key_crc32 );
-  void        clearObject   ();
+  gjMembers       members       ();
+  const gjMembers members       () const;
 
-  gjMembers   members       ();
+  void            sortMembersByKeys();
 };
 
 //---------------------------------------------------------------------------------
@@ -123,10 +139,13 @@ class gjMembers
 {
 friend struct gjValue;
 public:
-  using iterator = gjMemberIterator;
+  using iterator       = gjMemberIterator;
+  using const_iterator = gjConstMemberIterator;
 
-  iterator begin();
-  iterator end  ();
+  iterator       begin();
+  iterator       end  ();
+  const_iterator cbegin() const;
+  const_iterator cend  () const;
 private:
   gjValue value;
 };

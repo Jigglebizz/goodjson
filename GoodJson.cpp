@@ -1615,10 +1615,22 @@ void gjValue::clearObject()
 }
 
 //---------------------------------------------------------------------------------
+//
+// member iterators
+// 
+//---------------------------------------------------------------------------------
 gjMembers gjValue::members()
 {
   gjMembers members;
   members.value = *this;
+  return members;
+}
+
+//---------------------------------------------------------------------------------
+const gjMembers gjValue::members() const
+{
+  gjMembers members;
+  members.value = this;
   return members;
 }
 
@@ -1640,6 +1652,29 @@ gjMembers::iterator gjMembers::begin()
 gjMembers::iterator gjMembers::end()
 {
   iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::const_iterator gjMembers::cbegin() const
+{
+  const_iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  if ( gj_isValueAlloced( value.idx, value.gen ) )
+  {
+    it.idx = s_ValuePool[ value.idx ].m_ObjectStart.m_Idx;
+    it.gen = s_ValuePool[ value.idx ].m_ObjectStart.m_Gen;
+  }
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::const_iterator gjMembers::cend() const
+{
+  const_iterator it;
   it.idx = kMemberIdxTail;
   it.gen = (uint32_t)-1;
   return it;
@@ -1681,7 +1716,167 @@ gjMemberIterator& gjMemberIterator::operator++()
   return *this;
 }
 
+//---------------------------------------------------------------------------------
+const gjObjectMember gjConstMemberIterator::operator*()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen )
+  {
+    _gjMember* member = &s_MemberPool[ idx ];
+    return { member->m_KeyStr, member->m_Value };
+  }
 
+  return { nullptr, gjValue() };
+}
+
+//---------------------------------------------------------------------------------
+bool gjConstMemberIterator::operator==( const gjConstMemberIterator& other ) const
+{
+  return idx == other.idx && gen == other.gen;
+}
+
+//---------------------------------------------------------------------------------
+gjConstMemberIterator& gjConstMemberIterator::operator++()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen && s_MemberPool[ idx ].m_Next != kMemberIdxTail )
+  {
+    _gjMember* next = &s_MemberPool[ s_MemberPool[ idx ].m_Next ];
+    idx = s_MemberPool[ idx ].m_Next;
+    gen = next->m_Gen;
+  }
+  else
+  {
+    idx = kMemberIdxTail;
+    gen = (uint32_t)-1;
+  }
+
+  return *this;
+}
+
+//---------------------------------------------------------------------------------
+//
+// sorting
+//
+//---------------------------------------------------------------------------------
+int gj_strcmp( const char* a, const char* b )
+{
+  uint32_t idx = 0;
+  while ( a[ idx ] != '\0' && b[ idx ] != '\0' )
+  {
+    int cmp = (int)a[ idx ] - (int)b[ idx ];
+    if ( cmp != 0 )
+    {
+      return cmp;
+    }
+    idx++;
+  }
+  return 0;
+}
+
+//---------------------------------------------------------------------------------
+void gj_swap( uint32_t* a, uint32_t* b )
+{
+  uint32_t tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_quicksortPivot( uint32_t* key_idcs, uint32_t len )
+{
+  uint32_t  low_idx  = 0;
+  uint32_t* pivot_a  = &key_idcs[ len - 1 ];
+
+  for ( uint32_t upper_idx = 0; upper_idx < len - 1; ++upper_idx)
+  {
+    uint32_t* pivot_b = &key_idcs[ upper_idx ];
+    _gjMember* member_a = &s_MemberPool[*pivot_a];
+    _gjMember* member_b = &s_MemberPool[*pivot_b];
+
+    if ( gj_strcmp( member_a->m_KeyStr, member_b->m_KeyStr ) >= 0 )
+    {
+      gj_swap( &key_idcs[ low_idx ], &key_idcs[ upper_idx ] );
+      low_idx++;
+    }
+  }
+  gj_swap( &key_idcs[ low_idx ], &key_idcs[ len - 1 ] );
+
+  return low_idx;
+}
+
+
+//---------------------------------------------------------------------------------
+void gj_quickSortKeys( uint32_t* key_idcs, uint32_t count )
+{
+  if (count > 0)
+  {
+    uint32_t pivot_point = gj_quicksortPivot( key_idcs, count );
+    gj_quickSortKeys(  key_idcs, pivot_point );
+    gj_quickSortKeys( &key_idcs[ pivot_point + 1 ], count - pivot_point - 1 );
+  }
+}
+
+//---------------------------------------------------------------------------------
+void gjValue::sortMembersByKeys()
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kObject)
+    {
+      // count the number of members
+      uint32_t member_count = 0;
+      if ( val->m_ObjectStart.m_Idx != kMemberIdxTail && val->m_ObjectStart.m_Gen == s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen )
+      {
+        uint32_t member_idx = val->m_ObjectStart.m_Idx;
+        while ( member_idx != kMemberIdxTail )
+        {
+          _gjMember* member = &s_MemberPool[ member_idx ];
+          member_count++;
+          member_idx = member->m_Next;
+        }
+      }
+      
+      // place their indices in an array
+      uint32_t* tmp_idcs = (uint32_t*)gj_malloc( sizeof( *tmp_idcs ) * member_count, "member sort temp buffer" );
+      if ( val->m_ObjectStart.m_Idx != kMemberIdxTail && val->m_ObjectStart.m_Gen == s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen )
+      {
+        uint32_t member_idx = val->m_ObjectStart.m_Idx;
+        uint32_t tmp_idx = 0;
+        while ( member_idx != kMemberIdxTail )
+        {
+          tmp_idcs[ tmp_idx++ ] = member_idx;
+          _gjMember* member = &s_MemberPool[ member_idx ];
+          member_idx = member->m_Next;
+        }
+      }
+
+      // sort the array by key name
+      gj_quickSortKeys( tmp_idcs, member_count );
+
+      // relink
+      val->m_ObjectStart.m_Idx = tmp_idcs[ 0 ];
+      val->m_ObjectStart.m_Gen = s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen;
+
+      for ( uint32_t i_idc = 0; i_idc < member_count - 1; ++i_idc)
+      {
+        const uint32_t member_idx = tmp_idcs[ i_idc ];
+        s_MemberPool[ member_idx ].m_Next = tmp_idcs[ i_idc + 1 ];
+      }
+
+      s_MemberPool[ tmp_idcs[ member_count - 1 ] ].m_Next = kMemberIdxTail;
+
+      gj_free( tmp_idcs );
+    }
+    else
+    {
+      gj_assert( "Attempting to clear array on a value that isn't an array" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to clear array on a value that has been freed" );
+  }
+}
 
 //---------------------------------------------------------------------------------
 //
