@@ -732,10 +732,8 @@ gjValueType gjValue::getType() const
     _gjValue* val = &s_ValuePool[ idx ];
     return VAL_TYPE( val );
   }
-
-  gj_assert( "Attempting to get type for deallocated json value" );
  
-  return gjValueType::kInvalid;
+  return gjValueType::kNull;
 }
 
 //---------------------------------------------------------------------------------
@@ -888,7 +886,7 @@ bool gjValue::getBool() const
   if ( gj_isValueAlloced( idx, gen ) )
   {
     _gjValue* val = &s_ValuePool[ idx ];
-    if ( VAL_TYPE( val ) == gjValueType::kString )
+    if ( VAL_TYPE( val ) == gjValueType::kBool )
     {
       return val->m_Bool;
     }
@@ -1329,6 +1327,33 @@ void gjValue::removeElement( uint32_t remove_idx )
 }
 
 //---------------------------------------------------------------------------------
+gjValue gjValue::detachElement( uint32_t detach_idx )
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kArray)
+    {
+      const _gjArrayElem* freed_elem  = gj_freeArrayElem( &val->m_ArrayStart, detach_idx );
+      if ( freed_elem )
+      {
+        return freed_elem->m_Value;
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to remove element into a value that isn't an array" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to remove element from a value that has been freed" );
+  }
+
+  return gjValue{};
+}
+
+//---------------------------------------------------------------------------------
 void gjValue::clearArray()
 {
   if ( gj_isValueAlloced( idx, gen ) )
@@ -1364,6 +1389,11 @@ uint32_t gjValue::getMemberCount() const
     if ( VAL_TYPE( val ) == gjValueType::kObject )
     {
       const _gjMemberHandle obj_handle_start = val->m_ObjectStart;
+      if ( obj_handle_start.m_Idx == kMemberIdxTail )
+      {
+        return 0;
+      }
+
       if ( obj_handle_start.m_Gen == s_MemberPool[ obj_handle_start.m_Idx ].m_Gen )
       {
         uint32_t count = 0;
@@ -1587,6 +1617,39 @@ void gjValue::removeMember( uint32_t key_crc32 )
 }
 
 //---------------------------------------------------------------------------------
+gjValue gjValue::detachMember( const char* key )
+{
+  return detachMember( gj_crc32( key ) );
+}
+
+//---------------------------------------------------------------------------------
+gjValue gjValue::detachMember( uint32_t key_crc32 )
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kObject )
+    {
+      const _gjMember* freed_elem  = gj_freeMember( &val->m_ObjectStart, key_crc32 );
+      if ( freed_elem != nullptr )
+      {
+        return freed_elem->m_Value;
+      }
+    }
+    else
+    {
+      gj_assert( "Attempting to remove member from a value that isn't an object" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to remove member from a value that has been freed" );
+  }
+
+  return gjValue{};
+}
+
+//---------------------------------------------------------------------------------
 void gjValue::clearObject()
 {
   if ( gj_isValueAlloced( idx, gen ) )
@@ -1597,6 +1660,270 @@ void gjValue::clearObject()
       gj_freeValueData( val );
       val->m_ObjectStart.m_Idx = (uint32_t)-1;
       val->m_ObjectStart.m_Gen = (uint32_t)-1;
+    }
+    else
+    {
+      gj_assert( "Attempting to clear array on a value that isn't an array" );
+    }
+  }
+  else
+  {
+    gj_assert( "Attempting to clear array on a value that has been freed" );
+  }
+}
+
+//---------------------------------------------------------------------------------
+//
+// member iterators
+// 
+//---------------------------------------------------------------------------------
+gjMembers gjValue::members()
+{
+  gjMembers members;
+  members.value = *this;
+  return members;
+}
+
+//---------------------------------------------------------------------------------
+const gjMembers gjValue::members() const
+{
+  gjMembers members;
+  members.value = this;
+  return members;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::iterator gjMembers::begin()
+{
+  iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  if ( gj_isValueAlloced( value.idx, value.gen ) )
+  {
+    it.idx = s_ValuePool[ value.idx ].m_ObjectStart.m_Idx;
+    it.gen = s_ValuePool[ value.idx ].m_ObjectStart.m_Gen;
+  }
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::iterator gjMembers::end()
+{
+  iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::const_iterator gjMembers::begin() const
+{
+  const_iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  if ( gj_isValueAlloced( value.idx, value.gen ) )
+  {
+    it.idx = s_ValuePool[ value.idx ].m_ObjectStart.m_Idx;
+    it.gen = s_ValuePool[ value.idx ].m_ObjectStart.m_Gen;
+  }
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjMembers::const_iterator gjMembers::end() const
+{
+  const_iterator it;
+  it.idx = kMemberIdxTail;
+  it.gen = (uint32_t)-1;
+  return it;
+}
+
+//---------------------------------------------------------------------------------
+gjObjectMember gjMemberIterator::operator*()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen )
+  {
+    _gjMember* member = &s_MemberPool[ idx ];
+    return { member->m_KeyStr, member->m_Value };
+  }
+
+  return { nullptr, gjValue() };
+}
+
+//---------------------------------------------------------------------------------
+bool gjMemberIterator::operator==( const gjMemberIterator& other ) const
+{
+  return idx == other.idx && gen == other.gen;
+}
+
+//---------------------------------------------------------------------------------
+gjMemberIterator& gjMemberIterator::operator++()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen && s_MemberPool[ idx ].m_Next != kMemberIdxTail )
+  {
+    _gjMember* next = &s_MemberPool[ s_MemberPool[ idx ].m_Next ];
+    idx = s_MemberPool[ idx ].m_Next;
+    gen = next->m_Gen;
+  }
+  else
+  {
+    idx = kMemberIdxTail;
+    gen = (uint32_t)-1;
+  }
+
+  return *this;
+}
+
+//---------------------------------------------------------------------------------
+const gjObjectMember gjConstMemberIterator::operator*()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen )
+  {
+    _gjMember* member = &s_MemberPool[ idx ];
+    return { member->m_KeyStr, member->m_Value };
+  }
+
+  return { nullptr, gjValue() };
+}
+
+//---------------------------------------------------------------------------------
+bool gjConstMemberIterator::operator==( const gjConstMemberIterator& other ) const
+{
+  return idx == other.idx && gen == other.gen;
+}
+
+//---------------------------------------------------------------------------------
+gjConstMemberIterator& gjConstMemberIterator::operator++()
+{
+  if ( idx < s_Config.max_value_count && s_MemberPool[ idx ].m_Gen == gen && s_MemberPool[ idx ].m_Next != kMemberIdxTail )
+  {
+    _gjMember* next = &s_MemberPool[ s_MemberPool[ idx ].m_Next ];
+    idx = s_MemberPool[ idx ].m_Next;
+    gen = next->m_Gen;
+  }
+  else
+  {
+    idx = kMemberIdxTail;
+    gen = (uint32_t)-1;
+  }
+
+  return *this;
+}
+
+//---------------------------------------------------------------------------------
+//
+// sorting
+//
+//---------------------------------------------------------------------------------
+int gj_strcmp( const char* a, const char* b )
+{
+  uint32_t idx = 0;
+  while ( a[ idx ] != '\0' && b[ idx ] != '\0' )
+  {
+    int cmp = (int)a[ idx ] - (int)b[ idx ];
+    if ( cmp != 0 )
+    {
+      return cmp;
+    }
+    idx++;
+  }
+  return 0;
+}
+
+//---------------------------------------------------------------------------------
+void gj_swap( uint32_t* a, uint32_t* b )
+{
+  uint32_t tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+
+//---------------------------------------------------------------------------------
+uint32_t gj_quicksortPivot( uint32_t* key_idcs, uint32_t len )
+{
+  uint32_t  low_idx  = 0;
+  uint32_t* pivot_a  = &key_idcs[ len - 1 ];
+
+  for ( uint32_t upper_idx = 0; upper_idx < len - 1; ++upper_idx)
+  {
+    uint32_t* pivot_b = &key_idcs[ upper_idx ];
+    _gjMember* member_a = &s_MemberPool[*pivot_a];
+    _gjMember* member_b = &s_MemberPool[*pivot_b];
+
+    if ( gj_strcmp( member_a->m_KeyStr, member_b->m_KeyStr ) >= 0 )
+    {
+      gj_swap( &key_idcs[ low_idx ], &key_idcs[ upper_idx ] );
+      low_idx++;
+    }
+  }
+  gj_swap( &key_idcs[ low_idx ], &key_idcs[ len - 1 ] );
+
+  return low_idx;
+}
+
+
+//---------------------------------------------------------------------------------
+void gj_quickSortKeys( uint32_t* key_idcs, uint32_t count )
+{
+  if (count > 0)
+  {
+    uint32_t pivot_point = gj_quicksortPivot( key_idcs, count );
+    gj_quickSortKeys(  key_idcs, pivot_point );
+    gj_quickSortKeys( &key_idcs[ pivot_point + 1 ], count - pivot_point - 1 );
+  }
+}
+
+//---------------------------------------------------------------------------------
+void gjValue::sortMembersByKeys()
+{
+  if ( gj_isValueAlloced( idx, gen ) )
+  {
+    _gjValue* val = &s_ValuePool[ idx ];
+    if ( VAL_TYPE( val ) == gjValueType::kObject)
+    {
+      // count the number of members
+      uint32_t member_count = 0;
+      if ( val->m_ObjectStart.m_Idx != kMemberIdxTail && val->m_ObjectStart.m_Gen == s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen )
+      {
+        uint32_t member_idx = val->m_ObjectStart.m_Idx;
+        while ( member_idx != kMemberIdxTail )
+        {
+          _gjMember* member = &s_MemberPool[ member_idx ];
+          member_count++;
+          member_idx = member->m_Next;
+        }
+      }
+      
+      // place their indices in an array
+      uint32_t* tmp_idcs = (uint32_t*)gj_malloc( sizeof( *tmp_idcs ) * member_count, "member sort temp buffer" );
+      if ( val->m_ObjectStart.m_Idx != kMemberIdxTail && val->m_ObjectStart.m_Gen == s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen )
+      {
+        uint32_t member_idx = val->m_ObjectStart.m_Idx;
+        uint32_t tmp_idx = 0;
+        while ( member_idx != kMemberIdxTail )
+        {
+          tmp_idcs[ tmp_idx++ ] = member_idx;
+          _gjMember* member = &s_MemberPool[ member_idx ];
+          member_idx = member->m_Next;
+        }
+      }
+
+      // sort the array by key name
+      gj_quickSortKeys( tmp_idcs, member_count );
+
+      // relink
+      val->m_ObjectStart.m_Idx = tmp_idcs[ 0 ];
+      val->m_ObjectStart.m_Gen = s_MemberPool[ val->m_ObjectStart.m_Idx ].m_Gen;
+
+      for ( uint32_t i_idc = 0; i_idc < member_count - 1; ++i_idc)
+      {
+        const uint32_t member_idx = tmp_idcs[ i_idc ];
+        s_MemberPool[ member_idx ].m_Next = tmp_idcs[ i_idc + 1 ];
+      }
+
+      s_MemberPool[ tmp_idcs[ member_count - 1 ] ].m_Next = kMemberIdxTail;
+
+      gj_free( tmp_idcs );
     }
     else
     {
@@ -1912,7 +2239,7 @@ char* gj_addChars( char* cursor, const char* src, size_t len )
 char* gj_addCString( char* cursor, const char* src, size_t src_len )
 {
   uint32_t offset = 0;
-  for ( uint32_t i_char = 0; i_char < src_len; ++i_char )
+  for ( uint32_t i_char = 0; i_char < src_len + offset; ++i_char )
   {
     switch( src[ i_char ] )
     {
@@ -1959,7 +2286,7 @@ char* gj_addCString( char* cursor, const char* src, size_t src_len )
     }
   }
 
-  return cursor + src_len - offset;
+  return cursor + src_len + offset;
 }
 
 //---------------------------------------------------------------------------------
@@ -2649,165 +2976,168 @@ uint32_t gj_jsonToCString( char* c_string, uint32_t c_string_len, const char* js
 // returns index into ast node array
 uint32_t gj_parse( _gjLexContext* lex, _gjAstContext* ast )
 {
-  _gjLexSym* sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
-  switch ( sym->m_Type )
+  if ( lex->m_ReadIdx < lex->m_SymCount )
   {
-    case kSymInt:
+    _gjLexSym* sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+    switch ( sym->m_Type )
     {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type = _gjAstNode::kTypeInt;
-      node->m_Int  = strtol( sym->m_Str, nullptr, 10 );
-      return idx;
-    }
-    break;
-    case kSymU64:
-    {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type = _gjAstNode::kTypeU64;
-      node->m_U64  = strtoull( sym->m_Str, nullptr, 10 );
-      return idx;
-    }
-    break;
-    case kSymFloat:
-    {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type  = _gjAstNode::kTypeFloat;
-      node->m_Float = strtof( sym->m_Str, nullptr );
-      return idx;
-    }
-    break;
-    case kSymBool:
-    {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type  = _gjAstNode::kTypeBool;
-      node->m_Bool  = strncmp( sym->m_Str, "true", 4 ) == 0;
-      return idx;
-    }
-    break;
-    case kSymString:
-    {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type   = _gjAstNode::kTypeString;
+      case kSymInt:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type = _gjAstNode::kTypeInt;
+        node->m_Int  = strtol( sym->m_Str, nullptr, 10 );
+        return idx;
+      }
+      break;
+      case kSymU64:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type = _gjAstNode::kTypeU64;
+        node->m_U64  = strtoull( sym->m_Str, nullptr, 10 );
+        return idx;
+      }
+      break;
+      case kSymFloat:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type  = _gjAstNode::kTypeFloat;
+        node->m_Float = strtof( sym->m_Str, nullptr );
+        return idx;
+      }
+      break;
+      case kSymBool:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type  = _gjAstNode::kTypeBool;
+        node->m_Bool  = strncmp( sym->m_Str, "true", 4 ) == 0;
+        return idx;
+      }
+      break;
+      case kSymString:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type   = _gjAstNode::kTypeString;
 
       
-      const uint32_t c_string_len = gj_cStringLen( sym->m_Str, sym->m_StrLen );
+        const uint32_t c_string_len = gj_cStringLen( sym->m_Str, sym->m_StrLen );
 
-      node->m_String = (char*)gj_malloc( c_string_len + 1, "AST string value" );
+        node->m_String = (char*)gj_malloc( c_string_len + 1, "AST string value" );
 
-      if ( gj_jsonToCString( node->m_String, c_string_len, sym->m_Str ) != 0 )
-      {
-        gj_free( node->m_String );
-        return (uint32_t)-1;
-      }
-
-      node->m_String[ c_string_len ] = '\0';
-
-      return idx;
-    }
-    break;
-    case kSymNull:
-    {
-      uint32_t idx;
-      _gjAstNode* node = gj_allocAstNode( ast, &idx );
-      node->m_Type  = _gjAstNode::kTypeNull;
-      return idx;
-    }
-    break;
-    case kSymOpenBrace:
-    {
-      uint32_t obj_idx;
-      _gjAstNode* obj_node = gj_allocAstNode( ast, &obj_idx );
-      obj_node->m_Type           = _gjAstNode::kTypeObject;
-      obj_node->m_ObjectStartIdx = kAstNodeTailIdx;
-
-      sym = &lex->m_Syms[ lex->m_ReadIdx ];
-      if (sym->m_Type == kSymString )
-      {
-        obj_node->m_ObjectStartIdx = gj_parseMember( lex, ast );
-        if ( obj_node->m_ObjectStartIdx == kAstNodeTailIdx)
+        if ( gj_jsonToCString( node->m_String, c_string_len, sym->m_Str ) != 0 )
         {
+          gj_free( node->m_String );
           return (uint32_t)-1;
         }
-        _gjAstNode* prev_node = &ast->m_Nodes[ obj_node->m_ObjectStartIdx ];
+
+        node->m_String[ c_string_len ] = '\0';
+
+        return idx;
+      }
+      break;
+      case kSymNull:
+      {
+        uint32_t idx;
+        _gjAstNode* node = gj_allocAstNode( ast, &idx );
+        node->m_Type  = _gjAstNode::kTypeNull;
+        return idx;
+      }
+      break;
+      case kSymOpenBrace:
+      {
+        uint32_t obj_idx;
+        _gjAstNode* obj_node = gj_allocAstNode( ast, &obj_idx );
+        obj_node->m_Type           = _gjAstNode::kTypeObject;
+        obj_node->m_ObjectStartIdx = kAstNodeTailIdx;
 
         sym = &lex->m_Syms[ lex->m_ReadIdx ];
-        while ( sym->m_Type == kSymComma )
+        if (sym->m_Type == kSymString )
         {
-          lex->m_ReadIdx++;
-          prev_node->m_Next = gj_parseMember( lex, ast );
-          
-          if ( prev_node->m_Next == kAstNodeTailIdx)
+          obj_node->m_ObjectStartIdx = gj_parseMember( lex, ast );
+          if ( obj_node->m_ObjectStartIdx == kAstNodeTailIdx)
           {
             return (uint32_t)-1;
           }
-          prev_node = &ast->m_Nodes[ prev_node->m_Next ];
+          _gjAstNode* prev_node = &ast->m_Nodes[ obj_node->m_ObjectStartIdx ];
+
           sym = &lex->m_Syms[ lex->m_ReadIdx ];
-        }
-      }
-
-      if ( sym->m_Type != kSymClosedBrace )
-      {
-        gj_assert( "unrecognized token!" );
-        return (uint32_t)-1;
-      }
-
-      lex->m_ReadIdx++;
-
-      return obj_idx;
-    }
-    break;
-    case kSymOpenBracket:
-    {
-      uint32_t arr_idx;
-      _gjAstNode* arr_node      = gj_allocAstNode( ast, &arr_idx );
-      arr_node->m_Type          = _gjAstNode::kTypeArray;
-      arr_node->m_ArrayStartIdx = kAstNodeTailIdx;
-
-      sym = &lex->m_Syms[ lex->m_ReadIdx ];
-      if ( gj_isSymValueType( sym->m_Type ) )
-      {
-        arr_node->m_ArrayStartIdx = gj_parse( lex, ast );
-        _gjAstNode* prev_node = &ast->m_Nodes[ arr_node->m_ArrayStartIdx ];
-        prev_node->m_Next = kAstNodeTailIdx;
-
-        sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
-        while ( sym->m_Type == kSymComma )
-        {
-          if ( gj_isSymValueType( lex->m_Syms[ lex->m_ReadIdx ].m_Type ) == false )
+          while ( sym->m_Type == kSymComma )
           {
-            gj_assert( "unrecognized symbol!" );
-            return ( uint32_t )-1;
+            lex->m_ReadIdx++;
+            prev_node->m_Next = gj_parseMember( lex, ast );
+          
+            if ( prev_node->m_Next == kAstNodeTailIdx)
+            {
+              return (uint32_t)-1;
+            }
+            prev_node = &ast->m_Nodes[ prev_node->m_Next ];
+            sym = &lex->m_Syms[ lex->m_ReadIdx ];
           }
+        }
 
-          prev_node->m_Next = gj_parse( lex, ast );
-          prev_node = &ast->m_Nodes[ prev_node->m_Next ];
+        if ( sym->m_Type != kSymClosedBrace )
+        {
+          gj_assert( "unrecognized token!" );
+          return (uint32_t)-1;
+        }
+
+        lex->m_ReadIdx++;
+
+        return obj_idx;
+      }
+      break;
+      case kSymOpenBracket:
+      {
+        uint32_t arr_idx;
+        _gjAstNode* arr_node      = gj_allocAstNode( ast, &arr_idx );
+        arr_node->m_Type          = _gjAstNode::kTypeArray;
+        arr_node->m_ArrayStartIdx = kAstNodeTailIdx;
+
+        sym = &lex->m_Syms[ lex->m_ReadIdx ];
+        if ( gj_isSymValueType( sym->m_Type ) )
+        {
+          arr_node->m_ArrayStartIdx = gj_parse( lex, ast );
+          _gjAstNode* prev_node = &ast->m_Nodes[ arr_node->m_ArrayStartIdx ];
           prev_node->m_Next = kAstNodeTailIdx;
 
           sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+          while ( sym->m_Type == kSymComma )
+          {
+            if ( gj_isSymValueType( lex->m_Syms[ lex->m_ReadIdx ].m_Type ) == false )
+            {
+              gj_assert( "unrecognized symbol!" );
+              return ( uint32_t )-1;
+            }
+
+            prev_node->m_Next = gj_parse( lex, ast );
+            prev_node = &ast->m_Nodes[ prev_node->m_Next ];
+            prev_node->m_Next = kAstNodeTailIdx;
+
+            sym = &lex->m_Syms[ lex->m_ReadIdx++ ];
+          }
         }
-      }
-      else if ( sym->m_Type == kSymClosedBracket )
-      {
-        lex->m_ReadIdx++;
-      }
+        else if ( sym->m_Type == kSymClosedBracket )
+        {
+          lex->m_ReadIdx++;
+        }
 
-      if ( sym->m_Type != kSymClosedBracket )
-      {
-        gj_assert( "unrecognized token!" );
-        return (uint32_t)-1;
+        if ( sym->m_Type != kSymClosedBracket )
+        {
+          gj_assert( "unrecognized token!" );
+          return (uint32_t)-1;
+        }
+
+        return arr_idx;
+
       }
-
-      return arr_idx;
-
+      break;
+      default:
+      gj_assert( "Unexpected token!" );
     }
-    break;
-    default:
-    gj_assert( "Unexpected token!" );
   }
 
   return (uint32_t)-1;
@@ -2910,6 +3240,7 @@ gjValue gj_astToValue( _gjAstContext* ast, uint32_t node_idx )
 //---------------------------------------------------------------------------------
 gjValue gj_parse( const char* json_string, size_t string_len )
 {
+  // Start with lexing
   _gjLexContext lex_ctx;
   lex_ctx.m_Cursor   = json_string;
   lex_ctx.m_MaxLen   = string_len;
@@ -2936,10 +3267,13 @@ gjValue gj_parse( const char* json_string, size_t string_len )
 
     if ( valid_lex == false )
     {
+      gj_free( lex_ctx.m_Syms );
       gj_assert( "unrecognized format!" );
+      return gjValue{};
     }
   }
 
+  // Now we do parsin
   _gjAstContext ast_ctx;
   ast_ctx.m_Nodes     = (_gjAstNode*)gj_malloc( sizeof( *ast_ctx.m_Nodes ) * lex_ctx.m_SymCount, "AST Node Scratch" );
   ast_ctx.m_NodeCount = lex_ctx.m_SymCount;
@@ -2949,7 +3283,11 @@ gjValue gj_parse( const char* json_string, size_t string_len )
   {
     ast_ctx.m_Nodes[ i_node ].m_Next = i_node + 1;
   }
-  ast_ctx.m_Nodes[ ast_ctx.m_NodeCount - 1 ].m_Next = kAstNodeTailIdx;
+
+  if ( ast_ctx.m_NodeCount > 0 )
+  {
+    ast_ctx.m_Nodes[ ast_ctx.m_NodeCount - 1 ].m_Next = kAstNodeTailIdx;
+  }
 
   if ( gj_parse( &lex_ctx, &ast_ctx ) == (uint32_t)-1 )
   {
@@ -2972,6 +3310,7 @@ gjValue gj_parse( const char* json_string, size_t string_len )
 
   gj_free( lex_ctx.m_Syms );
 
+  // Now we put in memory
   gjValue value = gj_astToValue( &ast_ctx, 0 );
 
   gj_free( ast_ctx.m_Nodes );
