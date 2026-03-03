@@ -1089,22 +1089,26 @@ gjValue gjValue::makeDeepCopy() const
       {
         val_copy->m_ArrayStart.m_Idx = kArrayIdxTail;
         const _gjArrayHandle arr_handle_start = val->m_ArrayStart;
-        if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
+        
+        if ( arr_handle_start.m_Idx != kArrayIdxTail )
         {
-          if ( arr_handle_start.m_Idx != kArrayIdxTail )
+          if ( arr_handle_start.m_Gen == s_ArrayPool[ arr_handle_start.m_Idx ].m_Gen )
           {
-            const _gjArrayElem* elem = &s_ArrayPool[ arr_handle_start.m_Idx ];
-
-            _gjArrayElem* new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
-            val_copy->m_ArrayStart.m_Gen = new_elem->m_Gen;
-
-            new_elem->m_Value = elem->m_Value.makeDeepCopy();
-
-            while ( elem->m_Next != kArrayIdxTail )
+            if ( arr_handle_start.m_Idx != kArrayIdxTail )
             {
-              elem = &s_ArrayPool[ elem->m_Next ];
-              new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+              const _gjArrayElem* elem = &s_ArrayPool[ arr_handle_start.m_Idx ];
+          
+              _gjArrayElem* new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+              val_copy->m_ArrayStart.m_Gen = new_elem->m_Gen;
+          
               new_elem->m_Value = elem->m_Value.makeDeepCopy();
+          
+              while ( elem->m_Next != kArrayIdxTail )
+              {
+                elem = &s_ArrayPool[ elem->m_Next ];
+                new_elem = gj_allocArrayElem( &val_copy->m_ArrayStart.m_Idx );
+                new_elem->m_Value = elem->m_Value.makeDeepCopy();
+              }
             }
           }
         }
